@@ -15,7 +15,6 @@ lib/SeeAlso/Logger.pm
 
 examples/README
 examples/cgi-test.pl
-examples/dbi-example.pl
 examples/yahoo.pl
 examples/load-mysql.pl
 
