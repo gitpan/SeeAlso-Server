@@ -1,5 +1,6 @@
 Makefile.PL
 MANIFEST
+TODO
 LICENSE
 gpl-3.0.txt
 Changes
@@ -34,5 +35,10 @@ t/isbn.t
 t/source.t
 t/thingisbn.t
 t/dbisource.t
+
+client/showservice.xsl
+client/seealso.js 
+client/xmlverbatim.xsl
+client/xmlverbatim.css 
 
 META.yml                                 Module meta-data (added by MakeMaker)

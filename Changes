@@ -1,3 +1,7 @@
+0.50  2008-02-28 - added XSLT to unAPI format list and self-describe
+                 - added a JavaScript client ('client' directory)
+                 - added SeeAlso::Identifier::ISIL identifier (preliminary)
+                 - better detection of base URL
 0.48  2008-01-22 - rewrote SeeAlso::Source::DBI
                  - extended and fixed usage of SeeAlso::Logger
                  - the callback is now safely tested

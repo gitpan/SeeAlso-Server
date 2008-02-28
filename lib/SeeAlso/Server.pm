@@ -8,14 +8,14 @@ SeeAlso::Server - SeeAlso Linkserver Protocol Server
 
 use strict;
 use Carp qw(croak);
-use CGI;
+use CGI qw(-oldstyle_urls);
 
 use SeeAlso::Identifier;
 use SeeAlso::Response;
 use SeeAlso::Source;
 
 use vars qw($VERSION);
-$VERSION = "0.48";
+$VERSION = "0.50";
 
 =head1 DESCRIPTION
 
@@ -52,7 +52,8 @@ object:
   print $http;
 
 The examples directory contains a full example. For more specialised servers 
-you may also need to use L<SeeAlso::Identifier> or one of its subclasses.
+you may also need to use L<SeeAlso::Identifier> or one of its subclasses and
+another subclass of L<SeeAlso::Source>.
 
 =head1 METHODS
 
@@ -71,6 +72,17 @@ a L<CGI> object. If not specified, a new L<CGI> object is created.
 
 a <SeeAlso::Logger> object for logging.
 
+=item xslt
+
+the URL (relative or absolute) of an XSLT script to display the unAPI
+format list. An XSLT to display a full demo client is available.
+
+=item clientbase
+
+the base URL (relative or absolute) of a directory that contains
+client software to access the service. Only needed for the XSLT 
+script so far.
+
 =item description
 
 a string (or function) that contains (or returns) an
@@ -78,6 +90,16 @@ OpenSearch Description document as XML string. By default the
 openSearchDescription method of this class is used. You can switch off 
 support of OpenSearch Description by setting opensearchdescription to 
 the empty string.
+
+=item debug
+
+set debug level. By default (0) format=debug adds debugging information
+as JavaScript comment in the JSON response. You can force this with
+debug=1 and prohibit with debug=-1.
+
+=item logger
+
+set a logger for this server. See the method C<logger> below.
 
 =back
 
@@ -99,8 +121,13 @@ sub new {
     my $self = bless {
         cgi => $cgi || new CGI,
         description => $description,
-        logger => $logger
+        logger => $logger,
+        xslt => $params{xslt} || undef,
+        clientbase => $params{clientbase} || undef,
+        debug => $params{debug} || 0
     }, $class;
+
+    $self->logger($params{logger}) if defined $params{logger};
 
     return $self;
 }
@@ -145,6 +172,14 @@ sub listFormats {
 
     my $http = $self->{cgi}->header( -status => $status, -type => 'application/xml; charset: utf-8' );
     my @xml = ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+
+    if ($self->{xslt}) {
+        push @xml, "<?xml-stylesheet type=\"text/xsl\" href=\"" . xmlencode($self->{xslt}) . "\"?>";
+        push @xml, "<?seealso-query-base " . xmlencode($self->baseURL) . "?>";
+    }
+    if ($self->{clientbase}) {
+        push @xml, "<?seealso-client-base " . xmlencode($self->{clientbase}) . "?>";
+    }
 
     if ($response->hasQuery) {
         push @xml, "<formats id=\"" . xmlencode($response->{query}) . "\">";
@@ -255,6 +290,10 @@ sub query {
         };
         push @errors, $@ if $@;
     }
+
+    $format = "seealso" if ( $format eq "debug" && $self->{debug} == -1 ); 
+    $format = "debug" if ( $format eq "seealso" && $self->{debug} == 1 ); 
+
     if ( $format eq "seealso" ) {
         $http .= $cgi->header( -status => $status, -type => 'text/javascript; charset: utf-8' );
         $http .= $response->toJSON($callback);
@@ -307,11 +346,11 @@ sub openSearchDescription {
     }
 
     my $cgi = $self->{cgi};
-    my $domain = $cgi->virtual_host() || $cgi->server_name();
-    my $baseURL = "http://" . $domain . $cgi->script_name(); # TODO: what about https?
+    my $baseURL = $self->baseURL;
 
     my @xml = '<?xml version="1.0" encoding="UTF-8"?>';
     push @xml, '<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/">';
+
 
     if ($source and UNIVERSAL::isa($source, "SeeAlso::Source")) {
         my %descr = %{ $source->description() };
@@ -328,7 +367,7 @@ sub openSearchDescription {
         push @xml, "  <Description>" . xmlencode( $description ) . "</Description>"
             if defined $description;
 
-        $baseURL = $descr{"BaseURL"}
+        $baseURL = $descr{"BaseURL"}  # overwrites standard
             if defined $descr{"BaseURL"};
 
         my $modified = $descr{"DateModified"};
@@ -341,10 +380,29 @@ sub openSearchDescription {
     }
     my $template = $baseURL . (($baseURL =~ /\?/) ? '&' : '?')
                  . "id={searchTerms}&format=seealso&callback={callback}";
-    push @xml, "  <Url type=\"text/javascript\" template=\"$template\"/>";
+    push @xml, "  <Url type=\"text/javascript\" template=\"" . xmlencode($template) . "\"/>";
     push @xml, "</OpenSearchDescription>";
 
     return join("\n", @xml);
+}
+
+=head2 baseURL
+
+Return the full SeeAlso base URL of this server. Append the <tt>format=seealso</tt> parameter
+to get a SeeAlso simple base URL.
+
+=cut
+
+sub baseURL {
+    my $self = shift;
+    my $cgi = $self->{cgi};
+
+    # remove id, format, and callback parameter
+    my $q = "&" . $cgi->query_string();
+    $q =~ s/&(id|format|callback)=[^&]*//g;
+    $q =~ s/^&//;
+    return $cgi->url . "?$q" if $q;
+    return $cgi->url;
 }
 
 =head1 ADDITIONAL FUNCTIONS
