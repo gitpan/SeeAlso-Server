@@ -16,16 +16,15 @@
 #
 
 use strict;
+use utf8;
 use LWP::Simple;
 use URI::Escape qw(uri_escape);
-use JSON;
-use utf8;
+use JSON::XS qw(decode_json);
+use SeeAlso::Response;
+use SeeAlso::Server;
 
 use FindBin;
 use lib "$FindBin::RealBin/lib";
-
-use SeeAlso::Server;
-use SeeAlso::Source;
 
 sub query_method {
     my $identifier = shift;
@@ -40,7 +39,7 @@ sub query_method {
     $json =~ s/\)\s*(<!--.*-->)?\s*$//m; 
 
     # Parse JSON data (you should NEVER trust a web service whithout checking)
-    my $obj = jsonToObj($json); 
+    my $obj = decode_json $json; 
     for (my $i=0; $i < @{$obj->[1]}; $i++) {
         $obj->[3][$i] = $urlbase . uri_escape($obj->[1][$i]);
     }
@@ -48,8 +47,11 @@ sub query_method {
     return SeeAlso::Response->new( @$obj );
 }
 
-my $server = SeeAlso::Server->new();
-my $source = SeeAlso::Source->new( \&query_method, 
-    ( "ShortName" => "Yahoo Search Suggest" )
+print query_seealso_server(
+    \&query_method,
+    [
+      "ShortName" => "Yahoo Search Suggest",
+      #"Example" => { "id" => "hello" },
+      #"Examples" => [ { "id" => "hello" }, {"id"=>"huhu", "response"=>"..."} ]
+    ]
 );
-print $server->query( $source );

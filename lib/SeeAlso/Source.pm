@@ -5,7 +5,7 @@ use Carp qw(croak);
 use SeeAlso::Response;
 
 use vars qw($VERSION);
-$VERSION = "0.45";
+$VERSION = "0.46";
 
 =head1 NAME
 
@@ -77,6 +77,10 @@ Qualified Dublin Core element Date.Modified.
 
 Source of the data (dc:source)
 
+=item Example
+
+An example query (a hash of 'id' and optional 'response').
+
 =back
 
 =cut
@@ -89,7 +93,13 @@ sub description {
         my %param = @_;
         foreach my $key (keys %param) {
             my $value = $param{$key};
-            $value =~ s/\s+/ /g;
+            if ($key =~ /^Examples?$/) {
+                $value = [ $value ] unless ref($value) eq "ARRAY";
+                # TODO: check examples (must be an array of a hash)
+                $key = "Examples";
+            } else {
+                $value =~ s/\s+/ /g; # to string
+            }
             if ($self->{description}) {
                 $self->{description}{$key} = $value;
             } else {
@@ -151,17 +161,6 @@ sub errors {
     my $self = shift;
     push @{ $self->{errors} }, @_ if @_;
     return $self->{errors};
-}
-
-=head2 hasErrors
-
-Return whether errors have occured.
-
-=cut
-
-sub hasErrors {
-    my $self = shift;
-    return defined $self->{errors} and scalar @{ $self->{errors} };
 }
 
 1;

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   SeeAlso service display and test page.
-  Version 0.8
+  Version 0.8.3
 
   Usage: Put this file (showservice.xsl) in a directory together with 
-  seealso.js, xmlverbatim.xsl, xmlverbatim.css, and favicon.ico (optional)
+  seealso.js, xmlverbatim.xsl and favicon.ico (optional)
   and let your SeeAlso service point to it in the unAPI format list file.
 
   Copyright 2008 Jakob Voss
@@ -57,10 +57,19 @@
   <!-- favicon in the client directory (comment out to skip) -->
   <xsl:param name="favicon"><xsl:value-of select="$clientbase"/>favicon.ico</xsl:param>
 
-  <!-- metadata elements to display in the about-section (TODO: more) -->
+  <!-- metadata elements to display in the about-section (TODO: Image etc.) -->
   <so:MetadataFields>
     <osd:ShortName/>
     <osd:Description/>
+    <osd:Contact/>
+    <osd:Tags/>
+    <osd:LongName/>
+    <osd:Developer/>
+    <osd:Attribution/>
+    <osd:SyndicationRight/>
+    <osd:Language/>
+    <osd:InputEncoding/>
+    <osd:OutputEncoding/>
   </so:MetadataFields>
 
   <!-- root -->
@@ -74,9 +83,13 @@
     </xsl:variable>
     <html>
       <head>
+        <xsl:if test="$osd">
+          <xsl:attribute name="profile">http://a9.com/-/spec/opensearch/1.1/</xsl:attribute>
+          <link rel="search" type="application/opensearchdescription+xml"
+                href="{$osdurl}" title="{$name}" />
+        </xsl:if>
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
         <title>SeeAlso service : <xsl:value-of select="$name"/></title>
-        <link rel="stylesheet" type="text/css" href="{$clientbase}xmlverbatim.css" />
         <xsl:if test="$favicon">
           <link rel="shortcut icon" type="image/x-icon" href="{$favicon}" />
         </xsl:if>
@@ -86,19 +99,20 @@
           table { border-collapse:collapse; }
           td, th { border: 1px solid #666; padding: 4px; }
           th { text-align: left; background: #96c458; }
-          h2 { color: #96c458; margin: 1em 0em 0.5em 0em; } 
+          h2, h2 a { color: #96c458; margin: 1em 0em 0.5em 0em; } 
           h1 { color: #96c458; border-bottom: 1px solid #96c458; }
           td { background: #c3ff72; }
           p { padding-bottom: 0.5em; }
-          pre, .code { 
-          background: #ddd; 
-          border: 1px solid #666;
-          padding: 4px;
+          pre, .code {
+            background: #ddd; 
+            border: 1px solid #666;
+            padding: 4px;
           }
           table, .code, p { margin: 0em 0.5em 0em; }
+          form { padding-bottom: 0.5em; }
           #display {
-          background: #fff;
-          padding: 4px;
+            background: #fff;
+            padding: 4px;
           }
           .footer {
             border-top: 1px solid #96c458;
@@ -107,20 +121,46 @@
             margin-top: 1em;
             padding: 0.5em;
           }
+/* xmlverbatim.css */
+.xmlverb-default          { color: #333333; background-color: #ffffff;
+                            font-family: monospace }
+.xmlverb-element-name     { color: #990000 }
+.xmlverb-element-nsprefix { color: #666600 }
+.xmlverb-attr-name        { color: #660000 }
+.xmlverb-attr-content     { color: #000099; font-weight: bold }
+.xmlverb-ns-name          { color: #666600 }
+.xmlverb-ns-uri           { color: #330099 }
+.xmlverb-text             { color: #000000; font-weight: bold }
+.xmlverb-comment          { color: #006600; font-style: italic }
+.xmlverb-pi-name          { color: #006600; font-style: italic }
+.xmlverb-pi-content       { color: #006666; font-style: italic }
         </style>
         <script type="text/javascript">
+          var service = new SeeAlsoService("<xsl:value-of select="$seealso-query-base"/>");
+          function showfullresponse() {
+            var identifier = document.getElementById('identifier').value;
+            var url = service.url + "?format=debug&amp;id=" + identifier;
+            var iframe = document.getElementById('fullresponse');
+            if (iframe.style.display == "none") {
+              iframe.style.display = "";
+              iframe.src = url;
+            } else {
+              iframe.style.display = "none";
+            }
+          }
           function lookup() {
             var identifier = document.getElementById('identifier').value;
-            var service = new SeeAlsoService("<xsl:value-of select="$seealso-query-base"/>");
             var view = new SeeAlsoUL();
             var url = service.url + "?format=seealso&amp;id=" + identifier;
             var a = document.getElementById('query-url');
             a.setAttribute("href",url);
             a.innerHTML = "";
             a.appendChild(document.createTextNode(url));
+            document.getElementById('response').style.display = "";
+            document.getElementById('fullresponse').style.display = "none";
             url += "&amp;callback=?";
             var displayElement = document.getElementById('display');
-            service.query(identifier, function(response) {
+            service.query( identifier, function(response) {
               var json = response.toJSON();
               var r = document.getElementById('response');
               r.innerHTML = "";
@@ -145,9 +185,11 @@
               <xsl:otherwise>SeeAlso Simple</xsl:otherwise>
             </xsl:choose>
           </b>
-          web service. It delivers an <a href="http://unapi.info">unAPI</a> format list that 
-          includes the 'seealso' response format 
-          (<a href="http://www.gbv.de/wikis/cls/SeeAlso_Simple_Specification">SeeAlso Simple</a>). 
+          web service for retrieving links related to a given identifier.
+          The service provides an <a href="http://unapi.info">unAPI</a> format list that
+          includes the <em>seealso</em> response format
+         (see <a href="http://www.gbv.de/wikis/cls/SeeAlso_Simple_Specification">SeeAlso Simple Specification</a>).
+          You can try the service by typing in an identifier in the <a href='#demo'>query field below</a>.
         </p>
         <xsl:choose>
           <xsl:when test="$fullservice">
@@ -159,7 +201,11 @@
             <xsl:call-template name="demo">
               <xsl:with-param name="osd" select="$osd/osd:OpenSearchDescription"/>
             </xsl:call-template>
-            <h2>OpenSearch description document</h2>
+            <h2 id='osd' name='osd'>OpenSearch description document</h2>
+            <p>
+            This document is returned at <a href="{$osdurl}"><xsl:value-of select="$osdurl"/></a>
+            to describe the <xsl:value-of select="$name"/> service.
+            </p>
             <div class="code">
               <xsl:apply-templates select="$osd" mode="xmlverb" />
             </div>
@@ -169,13 +215,15 @@
           </xsl:otherwise>
         </xsl:choose>
         <xsl:if test="name(/*[1]) = 'formats'">
-        <h2>unAPI format list</h2>
+        <h2 id='formats' name='formats'>unAPI format list</h2>
         <div class="code">
           <xsl:apply-templates select="/" mode="xmlverb" />
         </div>
         </xsl:if>
         <div class="footer">This document has automatically been generated based 
-        on the services' <a href="{$osdurl}">OpenSearch description document</a>.</div>
+        on the services' <a href="{$osdurl}">OpenSearch description document</a>
+        (see <a href="http://www.opensearch.org/">OpenSearch.org</a>).
+        </div>
         <!-- TODO: Show version number of the SeeAlso JavaScript library -->
       </body>
     </html>
@@ -196,7 +244,7 @@
   <xsl:param name="baseurl"/>
   <xsl:param name="osd"/>
   <xsl:param name="fields"/>
-  <h2>About</h2>
+  <h2 id='about' name='about'>About</h2>
   <table>
      <xsl:for-each select="$fields">
       <xsl:variable name="localname" select="local-name(.)"/>
@@ -221,21 +269,24 @@
 
 <xsl:template name="demo">
   <xsl:param name="osd"/>
-  <xsl:param name="json.js"/>
-  <!--xsl:variable name="examples" select="$osd/so:example"/-->
-  <h2>Live demo</h2>
+  <xsl:variable name="examples" select="$osd/osd:Query[@role='example'][@searchTerms]"/>
+  <h2 id='demo' name='demo'>Live demo</h2>
   <form>
     <table id='demo'>
       <tr>
         <th>query</th>
         <td>
           <input type="text" id="identifier" onkeyup="lookup();" size="40" value="{/formats/@id}"/>
-          <!-- show the first 3 examples -->
-          <xsl:if test="$osd and $osd/so:example">
+          <!-- Show the first 3 examples -->
+          <xsl:if test="$osd and $examples">
             <xsl:text> (for instance </xsl:text>
-            <xsl:for-each select="$osd/so:example">
+            <xsl:for-each select="$examples">
               <xsl:if test="position() &gt; 1 and position() &lt; 4">, </xsl:if>
-              <xsl:if test="position() &lt; 4"><tt><xsl:value-of select="so:query"/></tt></xsl:if>
+              <xsl:if test="position() &lt; 4">
+                <tt style="text-decoration:underline" onClick='document.getElementById("identifier").value="{@searchTerms}";lookup();'>
+                    <xsl:value-of select="@searchTerms"/>
+                </tt>
+              </xsl:if>
               <xsl:if test="position() = 4"> ...</xsl:if>
             </xsl:for-each>
             <xsl:text>)</xsl:text>
@@ -244,13 +295,15 @@
       </tr>
       <tr></tr>
       <tr>
-        <th>query URL</th>
+        <th>query URL<sup><a href='#qurlnote'>*</a></sup></th>
         <td><a id='query-url' href=''></a></td>
       </tr>
       <tr>
-        <th>response</th>
-        <td><pre id='response'></pre></td>
-        <!-- TODO: check the result if it was one of the examples -->
+        <th onclick="showfullresponse();">response</th>
+        <td>
+            <pre id='response'></pre>
+            <iframe id="fullresponse" width="90%" name="fullresponse" src="" scrolling="auto" style="display:none;" class="code" />
+        </td>
       </tr>
       <tr>
         <th>display</th>
@@ -258,6 +311,12 @@
       </tr>
     </table>
   </form>
+  <p>
+    <a name='qurlnote' id='qurlnote'/><sup>*</sup>You can add a <tt>callback</tt> parameter to the query URL.
+    The JSON response is then wrapped in in parentheses and a function name of your choice. Callbacks
+    are particularly useful for use with web service requests in client-side JavaScript, but they also
+    involve security risks.
+  </p>
 </xsl:template>
 
 <!-- reusable replace-string function -->

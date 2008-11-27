@@ -14,8 +14,10 @@ use SeeAlso::Identifier;
 use SeeAlso::Response;
 use SeeAlso::Source;
 
-use vars qw($VERSION);
-$VERSION = "0.50";
+use vars qw( $VERSION @ISA @EXPORT );
+our @ISA = qw( Exporter );
+our $VERSION = "0.52";
+our @EXPORT = qw( query_seealso_server );
 
 =head1 DESCRIPTION
 
@@ -51,13 +53,25 @@ object:
   my $http = $server->query( $source );
   print $http;
 
+Or even smaller with the exported function C<query_seealso_server>:
+
+  use SeeAlso::Server;
+  print query_seealso_server(
+      sub {
+          my $identifier = shift; 
+          ....
+          return $response; 
+      },
+      [ "ShortName" => "MySimpleServer" ]
+  );
+
 The examples directory contains a full example. For more specialised servers 
 you may also need to use L<SeeAlso::Identifier> or one of its subclasses and
 another subclass of L<SeeAlso::Source>.
 
 =head1 METHODS
 
-=head2 new ( [%params] )
+=head2 new ( [ %params ] )
 
 Creates a new L<SeeAlso::Server> object. You may specify the following
 parameters:
@@ -67,10 +81,6 @@ parameters:
 =item cgi
 
 a L<CGI> object. If not specified, a new L<CGI> object is created.
-
-=item logger
-
-a <SeeAlso::Logger> object for logging.
 
 =item xslt
 
@@ -99,7 +109,20 @@ debug=1 and prohibit with debug=-1.
 
 =item logger
 
-set a logger for this server. See the method C<logger> below.
+set a <SeeAlso::Logger> for this server. See the method C<logger> below.
+
+=item formats
+
+An additional hash of formats (experimental). The structure is:
+
+  name => {
+     type => "...",
+     docs => "...",         # optional
+     method => \&function
+ }
+
+You can use this parameter to provide more formats then 'seealso' and
+'opensearchdescription' via unAPI.
 
 =back
 
@@ -124,8 +147,26 @@ sub new {
         logger => $logger,
         xslt => $params{xslt} || undef,
         clientbase => $params{clientbase} || undef,
-        debug => $params{debug} || 0
+        debug => $params{debug} || 0,
+        formats => { 'seealso' => { type => 'text/javascript' } }
     }, $class;
+
+    my %formats;
+    %formats = %{$params{formats}} if $params{formats};
+    if (%formats) {
+        foreach my $name (keys %formats) {
+            next if $name eq 'opensearchdescription' or $name eq 'seealso' or $name eq 'demo';
+            my $format = $formats{$name};
+            next unless ref($format) eq 'HASH';
+            next unless defined $format->{type};
+            next unless ref($format->{method}) eq 'CODE';
+            $self->{formats}{$name} = {
+                "type" => $format->{type},
+                "docs" => $format->{docs},
+                "method" => $format->{method}
+            };
+        }
+    }
 
     $self->logger($params{logger}) if defined $params{logger};
 
@@ -147,7 +188,7 @@ sub logger {
     $self->{logger} = $logger;
 }
 
-=head2 listFormats ( $response [, @formats] )
+=head2 listFormats ( $response )
 
 Return a HTTP response that lists available formats according to the
 unAPI specification version 1. You must provide a L<SeeAlso::Response>
@@ -155,15 +196,10 @@ object. If this response has no query then no unAPI parameter was provided
 so HTTP status code 200 is returned. Otherwise the status code depends
 on whether the response is empty (HTTP code 404) or not (HTTP code 300).
 
-The optional second parameter may contain an array of additional formats,
-each beeing a hash with 'name', 'type' and optional 'docs' field as
-defined in the unAPI standard version 1. You can use this parameter to 
-provide more formats then 'seealso' and 'opensearchdescription' via unAPI.
-
 =cut
 
 sub listFormats {
-    my ($self, $response, @formats) = @_;
+    my ($self, $response) = @_;
 
     my $status = 200;
     if ($response->hasQuery) {
@@ -187,21 +223,19 @@ sub listFormats {
         push @xml, "<formats>";
     }
 
-    push @formats, { name=>"seealso", type=>"text/javascript" };
+    my %formats = %{$self->{formats}};
 
     if ( (not defined $self->{description}) || $self->{description} ne "" ) {
-        push @formats, { 
-            name=>"opensearchdescription",
+        $formats{"opensearchdescription"} = {
             type=>"application/opensearchdescription+xml",
-            docs=>"http://www.opensearch.org/Specifications/OpenSearch/1.1/Draft_3#OpenSearch_description_document" }
+            docs=>"http://www.opensearch.org/Specifications/OpenSearch/1.1/Draft_3#OpenSearch_description_document"
+        };
     }
 
-    foreach my $format (@formats) {
-        next unless ref($format) eq 'HASH';
-        my %format = %{$format};
-        next unless defined $format{name} and defined $format{type};
-        my $fstr = "<format name=\"" . xmlencode($format{name}) . "\" type=\"" . xmlencode($format{type}) . "\"";
-        $fstr .= " docs=\"" . xmlencode($format{docs}) . "\"" if defined $format{docs};
+    foreach my $name (sort({$b cmp $a} keys(%formats))) {
+        my $format = $formats{$name};
+        my $fstr = "<format name=\"" . xmlencode($name) . "\" type=\"" . xmlencode($format->{type}) . "\"";
+        $fstr .= " docs=\"" . xmlencode($format->{docs}) . "\"" if defined $format->{docs};
         push @xml, $fstr . " />";
     }
 
@@ -263,7 +297,7 @@ sub query {
         $response = $source->query($identifier);
     };
     push @errors, $@ if $@;
-    push @errors, @{ $source->errors() } if $source->hasErrors();
+    push @errors, @{ $source->errors() } if $source->errors();
     if (@errors) {
         undef $response;
     } else {
@@ -314,9 +348,15 @@ sub query {
         $http .= "HTTP response status code is $status\n";
         $http .= "\nInternally the following errors occured:\n- " . join("\n- ", map {chomp; $_;} @errors) . "\n" if @errors;
         $http .= "*/\n";
-        $http .= $response->toJSON($callback);
+        $http .= $response->toJSON($callback) . "\n";
     } else {
-        $http = $self->listFormats($response);
+        # TODO is this properly logged?
+        my $f = $self->{formats}{$format};
+        if ($f) {
+            $f->{method}($identifier); # TODO: what if this fails?!
+        } else {
+            $http = $self->listFormats($response);
+        }
     }
     return $http;
 }
@@ -349,8 +389,7 @@ sub openSearchDescription {
     my $baseURL = $self->baseURL;
 
     my @xml = '<?xml version="1.0" encoding="UTF-8"?>';
-    push @xml, '<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/">';
-
+    push @xml, '<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:seealso="http://ws.gbv.de/seealso/schema/" >';
 
     if ($source and UNIVERSAL::isa($source, "SeeAlso::Source")) {
         my %descr = %{ $source->description() };
@@ -377,6 +416,18 @@ sub openSearchDescription {
         my $source = $descr{"Source"};
         push @xml, "  <dc:source" . xmlencode( $shortName ) . "</dc:source>"
             if defined $source;
+
+        if ($descr{"Examples"}) {
+            foreach my $example ( @{ $descr{"Examples"} } ) {
+                my $id = $example->{id};
+                my $args = "searchTerms=\"" . xmlencode($id) . "\"";
+                my $response = $example->{response};
+                if (defined $response) {
+                    $args .= " seealso:response=\"" . xmlencode($response) . "\"";
+                }
+                push @xml, "  <Query role=\"example\" $args />";
+            }
+        }
     }
     my $template = $baseURL . (($baseURL =~ /\?/) ? '&' : '?')
                  . "id={searchTerms}&format=seealso&callback={callback}";
@@ -406,6 +457,60 @@ sub baseURL {
 }
 
 =head1 ADDITIONAL FUNCTIONS
+
+=head2 query_seealso_server ( $source [, \@description ] [, %params ] )
+
+This function is a shortcut method to create and query a SeeAlso server 
+in one command. It is exported by default. The following line is a
+identifcal to the second:
+
+  query_seealso_server( $source, %params );
+
+  SeeAlso::Server->new( %params )->query( $source, $params{id} );
+
+If C<$params{id}> is not set, the C<id> parameter of the C<CGI> object
+(C<$param{cgi}> or C<CGI->new>) is used.
+
+If you pass an array reference as C<$source> instead of a 
+C<SeeAlso::Source> object, a new C<SeeAlso::Source> will be generated
+with C<@{$source}> as parameters. The following line is a identifcal 
+to three next commands:
+
+  query_seealso_server( \&query_function, \@description, %params );
+
+  $source = SeeAlso::Source->new( \&query_function, @description );
+  $server = SeeAlso::Server->new( %params );
+  $server->query( $source, $params{id} );
+
+Please note that you must pass the optional @description parameter as an
+array reference. Here is an example:
+
+  query_seealso_server( 
+     sub { ... }, 
+     [ "ShortName" => "..." ],
+     logger => SeeAlso::Logger->new(...)
+  );
+
+=cut
+
+sub query_seealso_server {
+    my $source = shift;
+
+    if (ref($source) eq "CODE") {
+        my @description;
+        if (ref($_[0]) eq "ARRAY") {
+            my $a = shift;
+            @description = @{ $a };
+        }
+        $source = SeeAlso::Source->new( $source, @description );
+    }
+
+    my %params = @_;
+
+    my $server = SeeAlso::Server->new( %params );
+
+    return $server->query( $source, $params{id} );
+}
 
 =head2 xmlencode ( $string )
 
