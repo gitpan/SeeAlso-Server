@@ -1,17 +1,18 @@
 package SeeAlso::Logger;
 
+use strict;
+use warnings;
+
 =head1 NAME
 
 SeeAlso::Logger - log requests to a SeeAlso Simple service
 
 =cut
 
-use strict;
 use Carp qw(croak);
 use POSIX qw(strftime);
 
-use vars qw($VERSION);
-$VERSION = "0.45";
+our $VERSION = "0.45";
 
 =head1 DESCRIPTION
 
@@ -133,13 +134,14 @@ sub set_file {
     my $self = shift;
     my $file = shift;
 
-    my $ishandle = do { no strict; defined fileno($file); };
-    if ($ishandle) {
+    if (ref($file) eq "GLOB" or eval { $file->isa("IO::Handle") }) {
         $self->{filename} = "";
         $self->{handle} = $file;
     } else {
         $self->{filename} = $file;
-        $self->{handle} = eval { local *FH; open( FH, ">>$file" ) or die; binmode FH, ":utf8"; *FH{IO}; };
+        $self->{handle} = eval {
+            my $fh; open( $fh, ">>", $file ) or die; binmode $fh, ":utf8"; $fh;
+        };
         undef $self->{handle} if ( $@ ); # failed to open file
     }
     return $self->{handle};
@@ -249,3 +251,15 @@ sub parse {
 }
 
 1;
+
+=head1 AUTHOR
+
+Jakob Voss C<< <jakob.voss@gbv.de> >>
+
+=head1 LICENSE
+
+Copyright (C) 2007-2009 by Verbundzentrale Goettingen (VZG) and Jakob Voss
+
+This library is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself, either Perl version 5.8.8 or, at
+your option, any later version of Perl 5 you may have available.

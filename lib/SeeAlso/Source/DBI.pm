@@ -1,18 +1,19 @@
 package SeeAlso::Source::DBI;
 
 use strict;
-use Carp qw(croak);
-use DBI;
-
-use SeeAlso::Source;
-
-use vars qw( @ISA $VERSION );
-@ISA = qw( SeeAlso::Source );
-$VERSION = "0.44";
+use warnings;
 
 =head1 NAME
 
 SeeAlso::Source::DBI - returns links stored in an SQL database (abstract class)
+
+=cut
+
+use Carp qw(croak);
+use DBI;
+
+use base qw( SeeAlso::Source );
+our $VERSION = "0.45";
 
 =head1 DESCRIPTION
 
@@ -169,19 +170,19 @@ sub loadFile {
             # See http://www.postgresql.org/docs/current/interactive/sql-copy.html
         }
     } else {
-        open (FH, $filename) or croak("Failed to open $filename");
+        my $fh; open ($fh, "<", $filename) or croak("Failed to open $filename");
         my $query = $self->insertQuery;
         croak ("insertQuery not available in loadFile") unless $query;
         my $rows = 0;
         my $invalidRows = 0;
-        while (<FH>) {
+        while (<$fh>) {
             if ( my @data = $self->parseInsertString($_) ) {
                 $query->execute( @data ) && $rows++;
             } else {
                 $invalidRows++;
             }
         }
-        close FH;
+        close $fh;
         $self->errors("loadFile skipped $invalidRows invalid rows") if $invalidRows;
         return $rows;
     }
@@ -231,3 +232,15 @@ sub insertResponse {
 }
 
 1;
+
+=head1 AUTHOR
+
+Jakob Voss C<< <jakob.voss@gbv.de> >>
+
+=head1 LICENSE
+
+Copyright (C) 2007-2009 by Verbundzentrale Goettingen (VZG) and Jakob Voss
+
+This library is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself, either Perl version 5.8.8 or, at
+your option, any later version of Perl 5 you may have available.
