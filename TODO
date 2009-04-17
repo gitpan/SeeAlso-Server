@@ -1,34 +1,44 @@
 Features, that are planned to be implemented before 1.0 release include:
 
 == Next ==
-- Add caching HTTP header
+- Add showservices.xsl in addition to showservice.xsl (for repositories)
+- simplify SeeAlso::Identifier
+- Finish SeeAlso::Client (including tests and examples, OSDD...)
+- create a SeeAlso::Source from parsing OSDD
+- Add multiple example parameters (see pnd2gso)
+- Add description of multiple formats in OSDD
+- Print errors to error logfile in SeeAlso::Server
+- Caching is needed!
+- add and describe minimal server example (examples/server.pl)
+- add Wikipedia2ISBN example (!)
+- add RDF as export format
 
 == Tests ==
-- Add SeeAlso::Test for testing SeeAlso services
+- Add more Unicode tests from toJSON and fromJSON!
+- Test servers with SeeAlso::Client
+- (See L<TAP::Harness> and L<Test::Harness>)
 - Add test of SeeAlso::Source::DBI with SQLite
 - Add a management class for multiple services
-- Add perl client (as SeeAlso::Source)
 
 = Redesign =
 - Create unAPI::Server to base on
 - Better support of OpenSearch Description (more fields), maybe with OpenSearch::Description
 -- title, description, url, date, example, example response, normalize, source
--- add date of last DBI-update in the description (from database?) on load
-- Better/more loading mechanism for SeeAlso::Source::DBI
+- Rewrite SeeAlso::Source::DBI to SeeAlso::CRUD or SeeAlso::Store
+-- Better/more loading mechanism for SeeAlso::Source::DBI
+-- Names of ::Store methods: retrieve/insert/update/delete
 -- simplify ETL-examples (thingISBN and Wikipedia)
 -- detect/remove full duplicates (better database index?)
+- have a look at uri-isbn.t in L<URI> and allow wrapping
+  of any URI as SeeAlso::Identifier
 
 == Misc ==
+- Add normalization of content (SeeAlso::Response)
 - Add SeeAlso::Discovery to discover servers via OpenSearch Description 
-- clean up the code
--- look for TODOs
--- look for missing documentation 
-- Better error handling (also log errors)
--- push errors from SeeAlso::Source to SeeAlso::Server
 - Support WADL and WSDL in addition to OpenSearch Description
 - Run as a real server (on a port of your choice) : better performance?
-- Add SeeAlso::Source::Union and example
-- Add SeeAlso::Source::Cache and example
+- Add SeeAlso::Source::Union and example (with: use threads;)
+- Add SeeAlso::Source::Cache and example (maybe with DBI)
 - Add an example of a multilangual source with equal identifiers: LibraryThing?
 - More Unicode (UTF-8) testing and hints
 - restrict access of cgi server by referrer, IP, etc. (better in .htaccess ?)
@@ -36,6 +46,9 @@ Features, that are planned to be implemented before 1.0 release include:
   HTTP POST (new), HTTP PUT (add) and HTTP DELETE (delete).
   Response formats and status codes need to be defined for this
 - remove Date::Parse prequisite
+- clean up the code
+-- look for TODOs
+-- look for missing documentation 
 
 == Examples ==
 - Add/improve Wikipedia/LibraryThing examples
@@ -46,7 +59,5 @@ Features, that are planned to be implemented before 1.0 release include:
 - Document purpose and usage
 
 == XSLT client ==
-- Document purpose and usage
-- Add more OSD fields
 - Add example result check
-- IE seems to have problem with iframe and document(.) ?
+- Check out: IE seems to have problem with iframe and document(.) ?

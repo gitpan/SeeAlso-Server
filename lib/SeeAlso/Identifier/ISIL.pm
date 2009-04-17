@@ -41,13 +41,10 @@ Registration Authority.
 
 =cut
 
-use SeeAlso::Identifier;
 use Carp;
 
-require Exporter;
-
 use base qw( SeeAlso::Identifier Exporter );
-our $VERSION = "0.1";
+our $VERSION = "0.22";
 our @EXPORT_OK = qw( sigel2isil );
 
 =head1 METHODS
@@ -82,7 +79,7 @@ sub value {
     if (defined $value) {
         $self->{value} = undef;
         $value =~ s/^\s+|\s+$//g;
-        $value =~ s/^ISIL |^info:isil\///;
+        $value =~ s/^ISIL |^info:isil\///i;
 
         # ISIL too long
         return unless length($value) <= 16;
@@ -130,20 +127,36 @@ sub local {
 
 =head2 normalized ( )
 
-Returns a normalized form as URI.
+Returns a normalized form as info URI or the empty string. Please 
+note that because of lower/uppercase differences, two ISIL variants
+that only differ in case, may not be normalized to the same string.
+The 'indexed' method returns an all-upercase representation of ISIL.
 
 =cut
 
 sub normalized {
     my $self = shift;
-    return "info:isil/" . $self->{value} if $self->valid();
+    return $self->valid ? "info:isil/" . $self->{value} : "";
+}
+
+=head2 indexed ( )
+
+Returns a version of ISIL to be used for indexing. This is an
+uppercase string because two ISIL must not differ only in case.
+
+=cut
+
+sub indexed {
+    my $self = shift;
+    return $self->valid ? uc($self->{value}) : "";
 }
 
 =head1 UTILITY FUNCTIONS
 
 =head2 sigel2isil ( $sigel )
 
-Creates an ISIL from an old German library identifier ("Sigel")
+Creates an ISIL from an old German library identifier ("Sigel"). This
+function is only a heuristic, not all cases can be mapped automatically!
 
 =cut
 
@@ -156,6 +169,9 @@ sub sigel2isil {
 
     # Bindestriche und Leerzeichen werden entfernt
     $isil =~ s/[- ]//g;
+
+    # Slashes werden Bindestriche
+    $isil =~ s/\//-/g;
 
     # Umlaute und Eszett (Ä,Ö,Ü,ä,ö,ü,ß) werden durch 
     # einfache Buchstaben ersetzen (AE,ÖE,UE,ae,oe,ue,ss).

@@ -1,16 +1,20 @@
-# http://module-build.sourceforge.net/META-spec.html
-#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
-name:         SeeAlso-Server
-version:      0.53
-version_from: lib/SeeAlso/Server.pm
-installdirs:  site
-requires:
+--- #YAML:1.0
+name:                SeeAlso-Server
+version:             0.55
+abstract:            SeeAlso Linkserver Protocol Server
+license:             ~
+author:              
+    - Jakob Voss <jakob.voss@gbv.de>
+generated_by:        ExtUtils::MakeMaker version 6.42
+distribution_type:   module
+requires:     
     Business::ISBN:                2.02
     Carp:                          1.01
     CGI:                           3.0
     Date::Parse:                   2.27
     DBI:                           1.54
     JSON::XS:                      2.0
-
-distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.30_01
+    URI:                           1.35
+meta-spec:
+    url:     http://module-build.sourceforge.net/META-spec-v1.3.html
+    version: 1.3

@@ -5,6 +5,7 @@ LICENSE
 gpl-3.0.txt
 Changes
 
+lib/SeeAlso/Client.pm
 lib/SeeAlso/Server.pm
 lib/SeeAlso/Identifier.pm
 lib/SeeAlso/Identifier/GND.pm
@@ -22,7 +23,6 @@ examples/yahoo.pl
 examples/i2lt.pl
 examples/i2ltconf.pl
 
-t/pod-coverage.t
 t/response.t
 t/pod.t
 t/server.t
@@ -32,6 +32,7 @@ t/listFormats404.xml
 t/listFormats300.xml
 t/identifier.t
 t/gnd.t
+t/client.t
 t/isil.t
 t/isbn.t
 t/source.t

@@ -1,12 +1,15 @@
 package SeeAlso::Server;
 
+use strict;
+use warnings;
+use utf8;
+
 =head1 NAME
 
 SeeAlso::Server - SeeAlso Linkserver Protocol Server
 
 =cut
 
-use strict;
 use Carp qw(croak);
 use CGI qw(-oldstyle_urls);
 
@@ -15,8 +18,7 @@ use SeeAlso::Response;
 use SeeAlso::Source;
 
 use base qw( Exporter );
-our $VERSION = "0.53";
-our @EXPORT = qw( query_seealso_server );
+our $VERSION = "0.55";
 
 =head1 DESCRIPTION
 
@@ -26,53 +28,41 @@ so this module also implements the unAPI protocol version 1.
 
 =head1 SYNOPSIS
 
-To implement a SeeAlso linkserver, you need instances of C<SeeAlso::Server>,
-and L<SeeAlso::Source>. The Source object must return a L<SeeAlso::Response> 
-object:
+The core of every SeeAlso linkserver is a query method that gets a 
+L<SeeAlso::Identifier> and returns a L<SeeAlso::Response>.
 
   use SeeAlso::Server;
-  my $server = SeeAlso::Server->new( cgi => $cgi );
-
-  use SeeAlso::Source;
   use SeeAlso::Response;
-  my $source = SeeAlso::Source->new( sub {
+
+  sub query {
       my $identifier = shift;
-      return unless $identifier->valid;
 
       my $response = SeeAlso::Response->new( $identifier );
-
-      # add response content depending on $identifier->value
       $response->add( $label, $description, $uri );
-      # ...
-
+      
       return $response;
-  } );
-  $source->description( "ShortName" => "MySimpleServer" );
+  }
 
-  my $http = $server->query( $source );
+  my @description = ( "ShortName" => "MySimpleServer" );
+  my $server = SeeAlso::Server->new( description => \@description );
+  my $http = $server->query( \&query );
   print $http;
 
-Or even smaller with the exported function C<query_seealso_server>:
+Instead of providing a simple query method, you can also use a
+L<SeeAlso::Source> object. Identifiers can be validated and normalized 
+with a validation method or a L<SeeAlso::Identifier> object.
 
-  use SeeAlso::Server;
-  print query_seealso_server(
-      sub {
-          my $identifier = shift; 
-          ....
-          return $response; 
-      },
-      [ "ShortName" => "MySimpleServer" ]
-  );
+  # get responses from a database (not implemented yet)
+  my $source = SeeAlso::Source::DBI->new( $connection, $sqltemplate );
 
-The examples directory contains a full example. For more specialised servers 
-you may also need to use L<SeeAlso::Identifier> or one of its subclasses and
-another subclass of L<SeeAlso::Source>.
+  # automatically convert identifier to uppercase
+  print $server->query( $source, sub { return uc($_[0]); } );
 
 =head1 METHODS
 
 =head2 new ( [ %params ] )
 
-Creates a new L<SeeAlso::Server> object. You may specify the following
+Creates a new SeeAlso::Server object. You may specify the following
 parameters:
 
 =over
@@ -84,7 +74,8 @@ a L<CGI> object. If not specified, a new L<CGI> object is created.
 =item xslt
 
 the URL (relative or absolute) of an XSLT script to display the unAPI
-format list. An XSLT to display a full demo client is available.
+format list. It is recommended to use the XSLT client 'showservice.xsl'
+that is available in the 'client' directory of this package.
 
 =item clientbase
 
@@ -94,21 +85,25 @@ script so far.
 
 =item description
 
-a string (or function) that contains (or returns) an
-OpenSearch Description document as XML string. By default the
-openSearchDescription method of this class is used. You can switch off 
-support of OpenSearch Description by setting opensearchdescription to 
-the empty string.
+By default the openSearchDescription method is used to create the
+self-description of a server based on a L<SeeAlso::Source>. You 
+can disable support of OpenSearch Description by setting this parameter
+to false or override the description by setting this parameter to
+an array reference.
+
+=item expires
+
+Send HTTP "Expires" header for caching (see the setExpires method for details).
 
 =item debug
 
-set debug level. By default (0) format=debug adds debugging information
+Debug level. By default (0) format=debug adds debugging information
 as JavaScript comment in the JSON response. You can force this with
-debug=1 and prohibit with debug=-1.
+C<debug = 1> and prohibit with C<debug = -1>.
 
 =item logger
 
-set a <SeeAlso::Logger> for this server. See the method C<logger> below.
+set a L<SeeAlso::Logger> for this server. See the method C<logger> below.
 
 =item formats
 
@@ -131,14 +126,15 @@ sub new {
     my ($class, %params) = @_;
 
     my $cgi = $params{cgi};
-    my $description = $params{description};
     my $logger = $params{logger};
+
+    my $description = 1;
+    if ( exists $params{description} ) {
+        $description = $params{description} || 0;
+    }
 
     croak('Parameter cgi must be a CGI object!')
         if defined $cgi and not UNIVERSAL::isa($cgi, 'CGI');
-    croak('Parameter description must either be a string, function or undef!')
-        if defined $description and not ($description eq "" or 
-           ref($description) eq 'SCALAR' or ref($description) eq 'CODE');
 
     my $self = bless {
         cgi => $cgi || new CGI,
@@ -147,8 +143,11 @@ sub new {
         xslt => $params{xslt} || undef,
         clientbase => $params{clientbase} || undef,
         debug => $params{debug} || 0,
-        formats => { 'seealso' => { type => 'text/javascript' } }
+        formats => { 'seealso' => { type => 'text/javascript' } },
+        errors => undef,
     }, $class;
+
+    $self->setExpires($params{expires}) if $params{expires};
 
     if ($params{formats}) {
         my %formats = %{$params{formats}};
@@ -171,9 +170,162 @@ sub new {
     return $self;
 }
 
+=head2 query ( $source [, $identifier [, $format [, $callback ] ] ] )
+
+Perform a query by a given source, identifier, format and (optional)
+callback parameter. Returns a full HTTP message with HTTP headers.
+Missing parameters are tried to get from the server's L<CGI> object.
+
+This is what the method actually does:
+The source (of type L<SeeAlso::Source>) is queried for the
+identifier (of type L<SeeAlso::Identifier> or a plain string or function).
+Depending on the response (of type L<SeeAlso::Response>) and the requested
+format ('seealso' or 'opensearchdescription' for valid responses)
+the right HTTP response is returned. This can be either a
+list of formats in unAPI Response format (XML), or a list
+of links in OpenSearch Suggestions Response format (JSON),
+or an OpenSearch Description Document (XML).
+
+This method catches all warnings and errors that may occur in the query 
+method and appends them to the error list that can be accessed by the
+errors method. The error list is cleaned before each call of query.
+
+=cut
+
+sub query {
+    my ($self, $source, $identifier, $format, $callback) = @_;
+    my $cgi = $self->{cgi};
+    my $http = "";
+
+    if (ref($source) eq "CODE") {
+        $source = new SeeAlso::Source( $source );
+    }
+    croak('First parameter must be a SeeAlso::Source object!')
+        unless defined $source and UNIVERSAL::isa($source, 'SeeAlso::Source');
+
+    if (ref($identifier) eq "CODE") {
+        $identifier = &$identifier( $cgi->param('id') );
+        # TODO: if hash returned, use it as ...
+        if (defined ($identifier) and not ref($identifier)) {
+            $identifier = SeeAlso::Identifier->new( "$identifier" );
+        } else {
+            $identifier = SeeAlso::Identifier->new( valid => sub { return 0; } );
+        }
+    } elsif (defined $identifier) {
+        $identifier = SeeAlso::Identifier->new( $identifier )
+            unless UNIVERSAL::isa($identifier,"SeeAlso::Identifier");
+    } else {
+        $identifier = SeeAlso::Identifier->new( $cgi->param('id') );
+    }
+
+    $format = $cgi->param('format') unless defined $format;
+    $format = "" unless defined $format;
+    $callback = $cgi->param('callback') unless defined $callback;
+    $callback = "" unless defined $callback;
+
+    # If everything is ok up to here, we should definitely return some valid stuff
+    $format = "seealso" if ( $format eq "debug" && $self->{debug} == -1 ); 
+    $format = "debug" if ( $format eq "seealso" && $self->{debug} == 1 ); 
+
+
+    if ($format eq 'opensearchdescription') {
+        $http = $self->openSearchDescription( $source );
+        if ($http) {
+            $http = $cgi->header( -status => 200, -type => 'application/opensearchdescription+xml; charset: utf-8' ) . $http;
+            return $http;
+        }
+    }
+
+
+    $self->{errors} = (); # clean error list
+    my $response;
+    my $status = 200;
+
+    if (not $identifier->valid()) {
+        $self->errors( "invalid identifier" );
+        $response = SeeAlso::Response->new();
+    } elsif ($format eq "seealso" or $format eq "debug" or !$self->{formats}{$format}) {
+        eval {
+            local $SIG{'__WARN__'} = sub {
+                $self->errors(shift);
+            };
+            $response = $source->query( $identifier );
+        };
+        if ($@) {
+            $self->errors( $@ );
+            undef $response;
+        } else {
+            if (defined $response && !UNIVERSAL::isa($response, 'SeeAlso::Response')) {
+                $self->errors( ref($source) . "->query must return a SeeAlso::Response object but it did return '" . ref($response) . "'");
+                undef $response;
+            }
+        }
+
+        $response = SeeAlso::Response->new() unless defined $response;
+
+        if ($callback && !($callback =~ /^[a-zA-Z0-9\._\[\]]+$/)) {
+            $self->errors( "Invalid callback name specified" );
+            undef $callback;
+            $status = 400;
+        }
+    } else {
+        $response = SeeAlso::Response->new( $identifier );
+    }
+
+    if ( $self->{logger} ) {
+        # TODO: if you override the description, this is not taken!
+        my $service = $source->description( "ShortName" );
+        eval {
+            $self->{logger}->log( $cgi, $response, $service )
+            || $self->errors("Logging failed");
+        };
+        $self->errors( $@ ) if $@;
+    }
+
+    if ( $format eq "seealso" ) {
+        my %headers =  (-status => $status, -type => 'text/javascript; charset: utf-8');
+        $headers{"-expires"} = $self->{expires} if ($self->{expires});
+        $http .= $cgi->header( %headers );
+        $http .= $response->toJSON($callback);
+    } elsif ( $format eq "debug") {
+        $http .= $cgi->header( -status => $status, -type => 'text/javascript; charset: utf-8' );
+        $http .= "/*\n";
+
+        use Class::ISA;
+        my %vars = ( Server => $self, Source => $source, Identifier => $identifier, Response => $response );
+        foreach my $var (keys %vars) {
+            $http .= "$var is a " .
+                join(", ", map { $_ . " " . $_->VERSION; }
+                Class::ISA::self_and_super_path(ref($vars{$var})))
+            . "\n"
+        }
+        $http .= "\n";
+        $http .= "HTTP response status code is $status\n";
+        $http .= "\nInternally the following errors occured:\n- "
+              . join("\n- ", @{ $self->errors() }) . "\n" if $self->errors();
+        $http .= "*/\n";
+        $http .= $response->toJSON($callback) . "\n";
+    } else { # other unAPI formats
+        # TODO is this properly logged?
+        # TODO: put 'seealso' as format method in the array
+        my $f = $self->{formats}{$format};
+        if ($f) {
+            my $type = $f->{type} . "; charset: utf-8";
+            my $header = $cgi->header( -status => $status, -type => $type );
+            $http = $f->{method}($identifier); # TODO: what if this fails?!
+            $http = $header . $http; # TODO: omit headers if already in HTTP
+        } else {
+            $http = $self->listFormats($response);
+        }
+    }
+    return $http;
+}
+
 =head2 logger ( [ $logger ] )
 
-Get/set a logger for this server. The logger must be of class L<SeeAlso::Logger>.
+Get/set a logger for this server. The logger must be of class L<SeeAlso::Logger>
+or it will be passed to its constructor. This means you can also use references to
+file handles and L<IO::Handle> objects.
 
 =cut
 
@@ -181,9 +333,27 @@ sub logger {
     my $self = shift;
     my $logger = shift;
     return $self->{logger} unless defined $logger;
-    croak('Parameter cgi must be a SeeAlso::Logger object!')
-        unless UNIVERSAL::isa($logger, 'SeeAlso::Logger');
+    if (!UNIVERSAL::isa($logger, 'SeeAlso::Logger')) {
+        $logger = SeeAlso::Logger->new($logger);
+    }
     $self->{logger} = $logger;
+}
+
+=head2 setExpires( $expires )
+
+Set "Expires" HTTP header for cache control. The parameter is expected to be
+either a HTTP Date (better use L<HTTP::Date> to create it) or a string such as
+"now" (immediately), "+180s" (in 180 seconds), "+2m" (in 2 minutes), "+12h" 
+(in 12 hours), "+1d" (in 1 day), "+3M" (in 3 months), "+1y" (in 1 year), 
+"-3m" (3 minutes ago).
+
+The "Expires" header is only sent for responses in seealso format!
+
+=cut
+
+sub setExpires {
+    my ($self, $expires) = @_;
+    $self->{expires} = $expires;
 }
 
 =head2 listFormats ( $response )
@@ -200,7 +370,7 @@ sub listFormats {
     my ($self, $response) = @_;
 
     my $status = 200;
-    if ($response->hasQuery) {
+    if ($response->query() ne "") {
         $status = $response->size ? 300 : 404;
     }
 
@@ -215,15 +385,15 @@ sub listFormats {
         push @xml, "<?seealso-client-base " . xmlencode($self->{clientbase}) . "?>";
     }
 
-    if ($response->hasQuery) {
-        push @xml, "<formats id=\"" . xmlencode($response->{query}) . "\">";
+    if ($response->query() ne "") {
+        push @xml, "<formats id=\"" . xmlencode($response->query()) . "\">";
     } else {
         push @xml, "<formats>";
     }
 
     my %formats = %{$self->{formats}};
 
-    if ( (not defined $self->{description}) || $self->{description} ne "" ) {
+    if ( $self->{description} ) {
         $formats{"opensearchdescription"} = {
             type=>"application/opensearchdescription+xml",
             docs=>"http://www.opensearch.org/Specifications/OpenSearch/1.1/Draft_3#OpenSearch_description_document"
@@ -242,131 +412,28 @@ sub listFormats {
     return $http . join("\n", @xml);
 }
 
-=head2 query ( $source [, $identifier [, $format [, $callback ] ] ] )
+=head2 errors ( [ $message ] )
 
-Perform a query by a given source, identifier, format and (optional)
-callback parameter. Returns a full HTTP message with HTTP headers.
-Missing parameters are tried to get from the server's L<CGI> object.
-
-This is what the method actually does:
-The source (of type L<SeeAlso::Source>) is queried for the
-identifier (of type L<SeeAlso::Identifier>). Depending on
-the response (of type L<SeeAlso::Response>) and the requested
-format ('seealso' or 'opensearchdescription' for valid responses)
-the right HTTP response is returned. This can be either a
-list of formats in unAPI Response format (XML), or a list
-of links in OpenSearch Suggestions Response format (JSON),
-or an OpenSearch Description Document (XML).
+Returns a list of errors and warning messages that have ocurred during the 
+last query. You can also add an error message but this is only useful interally.
 
 =cut
 
-sub query {
-    my ($self, $source, $identifier, $format, $callback) = @_;
-    my $cgi = $self->{cgi};
-    my $http = "";
-
-    croak('First parameter must be a SeeAlso::Source object!')
-        unless defined $source and UNIVERSAL::isa($source, 'SeeAlso::Source');
-
-    if (not defined $identifier) {
-        $identifier = SeeAlso::Identifier->new( $cgi->param('id') );
-    } else {
-        croak('Second parameter must be a SeeAlso::Identifier object!')
-          unless defined $source and UNIVERSAL::isa($identifier, 'SeeAlso::Identifier');
+sub errors {
+    my $self = shift;
+    my $message = shift;
+    if (defined $message) {
+        chomp $message;
+        push @{ $self->{errors} }, $message;
     }
-
-    $format = $cgi->param('format') unless defined $format;
-    $format = "" unless defined $format;
-    $callback = $cgi->param('callback') unless defined $callback;
-    $callback = "" unless defined $callback;
-
-    if ($format eq 'opensearchdescription') {
-        $http = $self->openSearchDescription( $source );
-        if ($http) {
-            $http = $cgi->header( -status => 200, -type => 'application/opensearchdescription+xml; charset: utf-8' ) . $http;
-            return $http;
-        }
-    }
-
-    # If everything is ok up to here, we should definitely return some valid stuff
-    $format = "seealso" if ( $format eq "debug" && $self->{debug} == -1 ); 
-    $format = "debug" if ( $format eq "seealso" && $self->{debug} == 1 ); 
-
-    my ($response, @errors);
-    my $status = 200;
-    if ($format eq "seealso" or $format eq "debug" or !$self->{formats}{$format}) {
-        eval {
-            $response = $source->query($identifier);
-        };
-        push @errors, $@ if $@;
-        push @errors, @{ $source->errors() } if $source->errors();
-        if (@errors) {
-            undef $response;
-        } else {
-            if (defined $response && !UNIVERSAL::isa($response, 'SeeAlso::Response')) {
-                push @errors, ref($source) . "->query must return a SeeAlso::Response object but it did return '" . ref($response) . "'";
-                undef $response;
-            }
-        }
-
-        $response = SeeAlso::Response->new() unless defined $response;
-
-        if ($callback && !($callback =~ /^[a-zA-Z0-9\._\[\]]+$/)) {
-            push @errors, "Invalid callback name specified";
-            undef $callback;
-            $status = 400;
-        }
-    } else {
-        $response = SeeAlso::Response->new( $identifier );
-    }
-
-    if ( $self->{logger} ) {
-        my $service = $source->description( "ShortName" );
-        eval {
-            $self->{logger}->log( $cgi, $response, $service )
-            || push @errors, "Logging failed";
-        };
-        push @errors, $@ if $@;
-    }
-
-    if ( $format eq "seealso" ) {
-        $http .= $cgi->header( -status => $status, -type => 'text/javascript; charset: utf-8' );
-        $http .= $response->toJSON($callback);
-    } elsif ( $format eq "debug") {
-        $http .= $cgi->header( -status => $status, -type => 'text/javascript; charset: utf-8' );
-        $http .= "/*\n";
-
-        use Class::ISA;
-        my %vars = ( Server => $self, Source => $source, Identifier => $identifier, Response => $response );
-        foreach my $var (keys %vars) {
-            $http .= "$var is a " .
-                join(", ", map { $_ . " " . $_->VERSION; }
-                Class::ISA::self_and_super_path(ref($vars{$var})))
-            . "\n"
-        }
-        $http .= "\n";
-        $http .= "HTTP response status code is $status\n";
-        $http .= "\nInternally the following errors occured:\n- " . join("\n- ", map {chomp; $_;} @errors) . "\n" if @errors;
-        $http .= "*/\n";
-        $http .= $response->toJSON($callback) . "\n";
-    } else {
-        # TODO is this properly logged?
-        # TODO: put 'seealso' as format method in the array
-        my $f = $self->{formats}{$format};
-        if ($f) {
-            $http = $f->{method}($identifier); # TODO: what if this fails?!
-        } else {
-            $http = $self->listFormats($response);
-        }
-    }
-    return $http;
+    return $self->{errors};
 }
 
-=head2 openSearchDescription ( [$source] )
+=head2 openSearchDescription ( [ $source ] )
 
 Returns an OpenSearch Description document.
 If you pass a L<SeeAlso::Source> instance,
-additional information will be printed.
+additional information will be added.
 
 =cut
 
@@ -374,20 +441,14 @@ sub openSearchDescription {
     my $self = shift;
     my $source = shift;
 
-    return if defined $self->{description} && $self->{description} eq ""; # switched off
-    return $self->{description} if ref($self->{description}) eq "SCALAR"; # fixed string
-
-    my $xml;
-    if (ref($self->{description}) eq 'CODE') {
-        eval {
-            $xml = &{$self->{description}}();
-        };
-        return "" if ($@); # TODO: where to put error message?
-        return "$xml";     # TODO: if scalar?
-    }
-
     my $cgi = $self->{cgi};
     my $baseURL = $self->baseURL;
+
+    return unless $self->{description};
+    if ( ref($self->{description}) eq "ARRAY" ) {
+        $source = SeeAlso::Source->new( sub {} );
+        $source->description( @{$self->{description}} );
+    }
 
     my @xml = '<?xml version="1.0" encoding="UTF-8"?>';
     push @xml, '<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:seealso="http://ws.gbv.de/seealso/schema/" >';
@@ -411,14 +472,14 @@ sub openSearchDescription {
             if defined $descr{"BaseURL"};
 
         my $modified = $descr{"DateModified"};
-        push @xml, "  <dcterms:modified>" . xmlencode( $shortName ) . "</dcterms:modified>"
+        push @xml, "  <dcterms:modified>" . xmlencode( $modified ) . "</dcterms:modified>"
             if defined $modified;
 
-        my $source = $descr{"Source"};
-        push @xml, "  <dc:source" . xmlencode( $shortName ) . "</dc:source>"
-            if defined $source;
+        my $src = $descr{"Source"};
+        push @xml, "  <dc:source>" . xmlencode( $src ) . "</dc:source>"
+            if defined $src;
 
-        if ($descr{"Examples"}) {
+        if ($descr{"Examples"}) { # TODO: add more parameters
             foreach my $example ( @{ $descr{"Examples"} } ) {
                 my $id = $example->{id};
                 my $args = "searchTerms=\"" . xmlencode($id) . "\"";
@@ -438,9 +499,10 @@ sub openSearchDescription {
     return join("\n", @xml);
 }
 
-=head2 baseURL
+=head2 baseURL ( )
 
-Return the full SeeAlso base URL of this server. Append the <tt>format=seealso</tt> parameter
+Return the full SeeAlso base URL of this server. 
+You can append the 'format=seealso' parameter
 to get a SeeAlso simple base URL.
 
 =cut
@@ -458,60 +520,6 @@ sub baseURL {
 }
 
 =head1 ADDITIONAL FUNCTIONS
-
-=head2 query_seealso_server ( $source [, \@description ] [, %params ] )
-
-This function is a shortcut method to create and query a SeeAlso server 
-in one command. It is exported by default. The following line is a
-identifcal to the second:
-
-  query_seealso_server( $source, %params );
-
-  SeeAlso::Server->new( %params )->query( $source, $params{id} );
-
-If C<$params{id}> is not set, the C<id> parameter of the C<CGI> object
-(C<$param{cgi}> or C<CGI->new>) is used.
-
-If you pass an array reference as C<$source> instead of a 
-C<SeeAlso::Source> object, a new C<SeeAlso::Source> will be generated
-with C<@{$source}> as parameters. The following line is a identifcal 
-to three next commands:
-
-  query_seealso_server( \&query_function, \@description, %params );
-
-  $source = SeeAlso::Source->new( \&query_function, @description );
-  $server = SeeAlso::Server->new( %params );
-  $server->query( $source, $params{id} );
-
-Please note that you must pass the optional @description parameter as an
-array reference. Here is an example:
-
-  query_seealso_server( 
-     sub { ... }, 
-     [ "ShortName" => "..." ],
-     logger => SeeAlso::Logger->new(...)
-  );
-
-=cut
-
-sub query_seealso_server {
-    my $source = shift;
-
-    if (ref($source) eq "CODE") {
-        my @description;
-        if (ref($_[0]) eq "ARRAY") {
-            my $a = shift;
-            @description = @{ $a };
-        }
-        $source = SeeAlso::Source->new( $source, @description );
-    }
-
-    my %params = @_;
-
-    my $server = SeeAlso::Server->new( %params );
-
-    return $server->query( $source, $params{id} );
-}
 
 =head2 xmlencode ( $string )
 
@@ -531,3 +539,15 @@ sub xmlencode {
 }
 
 1;
+
+=head1 AUTHOR
+
+Jakob Voss C<< <jakob.voss@gbv.de> >>
+
+=head1 LICENSE
+
+Copyright (C) 2007-2009 by Verbundzentrale Goettingen (VZG) and Jakob Voss
+
+This library is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself, either Perl version 5.8.8 or, at
+your option, any later version of Perl 5 you may have available.

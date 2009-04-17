@@ -10,7 +10,7 @@ SeeAlso::Identifier - an identifier passed to a SeeAlso-Server
 =cut
 
 use Carp;
-our $VERSION = "0.41";
+our $VERSION = "0.43";
 
 =head1 DESCRIPTION
 
@@ -138,7 +138,7 @@ sub new {
         if defined $valid and ref($valid) ne "CODE";
 
     my $self = bless {
-        value => "",
+        value => undef,
         mValid => $valid,
         mNormalized => $normalized,
         mIndexed => $indexed,
@@ -161,10 +161,14 @@ sub value {
         $self->{value} = $value;
     }
 
-    return $self->{value};
+    if (not defined $self->{value}) {
+        return $self->valid() ? "" : undef;
+    } else {
+        return $self->{value};
+    }
 }
 
-=head2 normalized
+=head2 normalized ( )
 
 Return a normalized representation of this identifier.
 By default this is what the value method returns.
@@ -180,7 +184,7 @@ sub normalized {
     }
 }
 
-=head2 indexed
+=head2 indexed ( )
 
 Return the index value of this identifier.
 By default this is the normalized form but you may
@@ -197,7 +201,7 @@ sub indexed {
     }
 }
 
-=head2 valid
+=head2 valid ( )
 
 Returns whether this identifier is valid. By default
 all non empty identifiers (everything but '' and undef)

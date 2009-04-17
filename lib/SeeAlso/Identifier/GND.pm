@@ -19,9 +19,10 @@ Furthermore it is planned to include the Uniform Title Authority file
 "Einheitssachtitel" (EST).
 
 Each authority file record has an unique number which is modeled by 
-this class. A GND number consists of eight digits and a check digit 
-which may also be an 'X'. There is an URI representation of a GND number
-that can be created by prepending 'http://d-nb.info/gnd/'.
+this class. A GND number consists of up to eight digits and a check digit 
+which may also be an 'X'.  Heading zero digits are removed. There is an
+URI representation of a GND number that can be created by prepending
+'http://d-nb.info/gnd/'.
 
 This subclass of L<SeeAlso::Identifier> overrides the constructor
 C<new> and the methods C<valid> and C<normalized>.
@@ -32,7 +33,7 @@ use SeeAlso::Identifier;
 use Carp;
 
 use base qw( SeeAlso::Identifier );
-our $VERSION = "0.53";
+our $VERSION = "0.54";
 
 =head1 METHODS
 
@@ -53,7 +54,8 @@ sub new {
 
 Get and/or set the value of this identifier. Whitespaces at the ends of 
 the value string, the character '-', and one of the prefixes 'GND', 'PND',
-'GKD', 'EST', 'http://d-nb.info/gnd/' are removed.
+'GKD', 'EST', 'http://d-nb.info/gnd/' are removed as well as zeros at the
+beginning.
 
 =cut
 
@@ -64,6 +66,7 @@ sub value {
     if (defined $value) {
         $value =~  s/^\s+|\s+$//;
         $value =~ s/^http:\/\/d-nb.info\/gnd\/|(GND|pnd|SWD|GKD|EST)\s*//i;
+        $value =~  s/^0+//; # zeros
         $value =~ s/-//g;
         $self->{value} = uc($value);
     }
@@ -81,6 +84,13 @@ there are two methods for check digit computation, not all errors can be detecte
 sub valid {
     my $self = shift;
     my $value = $self->{value};
+
+    # TODO: fix bad syntax
+    if ($value) { # not on empty value
+        for (my $i = 9-length($value);$i>0;$i--) {
+            $value =  "0$value";
+        }
+    }
 
     $value =~ /^([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])([0-9])([0-9X])$/ 
     || return;
@@ -102,6 +112,19 @@ If the identifier is not valid, this methods returns an empty string.
 sub normalized {
     my $self = shift;
     return $self->valid() ? ("http://d-nb.info/gnd/" . $self->{value}) : "";
+}
+
+=head2 indexed ( )
+
+Return a shortened version of the GND identifier, that is the valid 
+GND without hyphen, prefix, or heading zeroes. You could further 
+strip off the check digit.
+
+=cut
+
+sub indexed {
+    my $self = shift;
+    return $self->valid ? $self->{value} : undef;
 }
 
 1;
