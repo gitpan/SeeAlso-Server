@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                SeeAlso-Server
-version:             0.55
+version:             0.56
 abstract:            SeeAlso Linkserver Protocol Server
 license:             ~
 author:              
@@ -11,9 +11,13 @@ requires:
     Business::ISBN:                2.02
     Carp:                          1.01
     CGI:                           3.0
+    Data::Validate::URI:           0.05
     Date::Parse:                   2.27
     DBI:                           1.54
+    Getopt::Long:                  0
     JSON::XS:                      2.0
+    Pod::Usage:                    0
+    Text::CSV:                     0
     URI:                           1.35
 meta-spec:
     url:     http://module-build.sourceforge.net/META-spec-v1.3.html

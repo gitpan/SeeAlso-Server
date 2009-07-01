@@ -43,5 +43,6 @@ t/critique.t
 client/showservice.xsl
 client/seealso.js 
 client/xmlverbatim.xsl
+client/seealso
 
 META.yml                                 Module meta-data (added by MakeMaker)
