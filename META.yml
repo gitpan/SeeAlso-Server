@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                SeeAlso-Server
-version:             0.56
+version:             0.57
 abstract:            SeeAlso Linkserver Protocol Server
 license:             ~
 author:              
@@ -17,6 +17,7 @@ requires:
     Getopt::Long:                  0
     JSON::XS:                      2.0
     Pod::Usage:                    0
+    Test::Exception:               0.27
     Text::CSV:                     0
     URI:                           1.35
 meta-spec:
