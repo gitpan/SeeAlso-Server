@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   SeeAlso service display and test page.
-  Version 0.8.8
+  Version 0.9.01
 
   Usage: Put this file (showservice.xsl) in a directory together with 
   seealso.js, xmlverbatim.xsl and favicon.ico (optional)
   and let your SeeAlso service point to it in the unAPI format list file.
 
-  Copyright (C) 2007-2009 by Verbundzentrale Goettingen (VZG) and Jakob Voss
+  Copyright (C) 2007-2010 by Verbundzentrale Goettingen (VZG) and Jakob Voss
 
   Licensed under the Apache License, Version 2.0 (the "License"); 
   you may not use this file except in compliance with the License.
@@ -44,13 +44,25 @@
     <xsl:text>format=opensearchdescription</xsl:text>
   </xsl:param>
 
+  <xsl:param name="beaconurl">
+    <xsl:if test="/formats/format[@name='beacon']">
+      <xsl:value-of select="$seealso-query-base"/>
+      <xsl:choose>
+        <xsl:when test="not($seealso-query-base)">?</xsl:when>
+        <xsl:when test="contains($seealso-query-base,'?')">&amp;</xsl:when>
+        <xsl:otherwise>?</xsl:otherwise>
+      </xsl:choose>
+      <xsl:text>format=beacon</xsl:text>
+    </xsl:if>
+  </xsl:param>
+
   <!-- global variables -->
   <xsl:variable name="osd" select="document($osdurl)"/>
   <xsl:variable name="fullservice" select="namespace-uri($osd/*[1]) = 'http://a9.com/-/spec/opensearch/1.1/'"/>
   <xsl:variable name="name">
     <xsl:apply-templates select="$osd/osd:OpenSearchDescription" mode="name"/>
   </xsl:variable>
-  <xsl:variable name="formats" select="/formats/format[not(@name='opensearchdescription')]"/>
+  <xsl:variable name="formats" select="/formats/format[not(@name='opensearchdescription' or @name='beacon')]"/>
   <xsl:variable name="moreformats" select="$formats[not(@name='seealso')]"/>
 
   <!-- locate the other files -->
@@ -84,31 +96,34 @@
         <script src="{$clientbase}seealso.js" type="text/javascript" ></script>
         <style type="text/css">
 body, h1, h2, th, td { font-family: sans-serif; }
-table { border-collapse:collapse; background: #d0ffa0; font-size: small; }
-td, th { border: none; padding: 4px; }
+p, table, .footer { font-size: small; }
+table, .code, p { margin: 0em 0.5em 0em; }
+table { 
+  border-collapse:collapse;
+  margin-bottom: 0.5em; 
+}
+td, th { padding: 4px; }
 th { text-align: right; vertical-align: top; }
 h2, h2 a { color: #96c458; margin: 1em 0em 0.5em 0em; font-size: 1em; } 
-h1 { color: #96c458; border-bottom: 1px solid #96c458; font-size: 1.5em; }
-p { padding-bottom: 0.5em; padding-left: 0.5em; font-size: small; }
+h1 { color: #96c458; font-size: 1.5em; }
+h1 a { color: #96c458; }
+p { padding-bottom: 0.5em; padding-left: 0.5em; }
 pre, .code {
   background: #ddd; 
   border: 1px solid #666;
   padding: 4px;
   margin: 0;
 }
-table, .code, p { margin: 0em 0.5em 0em; }
-table { margin-bottom: 0.5em; }
-
 #display-styles {
   margin-top: 0.5em;
 }
 #display {
   background: #fff;
+  border: 1px dotted #ddd;
   padding: 4px;
 }
 .footer {
   border-top: 1px solid #96c458;
-  font-size: small;
   color: #666;
   margin-top: 1em;
   padding: 0.5em;
@@ -134,6 +149,17 @@ table { margin-bottom: 0.5em; }
           var currentResponse;
           var currentFormat = "seealso";
           var displayElement;
+
+          function toggleDisplay( element, button ) {
+              if ( element.style.display == "none" ) {
+                  element.style.display = "";
+                  if (button) button.data = "-";
+              } else {
+                  element.style.display = "none";
+                  if (button) button.data = "+";
+              }
+          }
+
           function toggleFullResponse(sign) {
               var identifier = document.getElementById('identifier').value;
               var url = service.url;
@@ -141,19 +167,15 @@ table { margin-bottom: 0.5em; }
               url += "format=debug&amp;id=" + identifier;
               var iframe = document.getElementById('response-debug-iframe');
               var shortresponse = document.getElementById('response');
-              if (iframe.style.display == "none") {
-                  iframe.style.display = "";
+              toggleDisplay( iframe, sign.firstChild );
+              if (iframe.style.display != "none") {
                   shortresponse.style.display = "none";
                   iframe.src = url;
               } else {
-                  iframe.style.display = "none";
                   shortresponse.style.display = "";
               }
-              sign.firstChild.data = sign.firstChild.data == "+" ? "-" : "+";
           }
-          function makeurl(identifier, format) {
 
-          }
           function lookup() {
               var identifier = document.getElementById('identifier').value;
               var format = currentFormat;
@@ -193,7 +215,6 @@ table { margin-bottom: 0.5em; }
           }
           function init() {
               displayElement = document.getElementById('display');
-              selectFormat("seealso");
               var displaystyles = document.getElementById('display-styles');
               for(var viewName in collection.views) {
                   var option = document.createElement("option");
@@ -203,7 +224,8 @@ table { margin-bottom: 0.5em; }
                   }
                   displaystyles.appendChild(option);
               }
-              displaystyles.style.display = "block";
+              displaystyles.parentNode.style.display = "block";
+              selectFormat("seealso"); // TODO: this could fail
           }
           function selectFormat(format) {
               if (format=="seealso") {
@@ -228,20 +250,31 @@ table { margin-bottom: 0.5em; }
          </script> 
       </head>
       <body onload="init();">
-        <h1>
+        <xsl:variable name="title">
           <xsl:choose>
             <xsl:when test="string-length($name) &gt; 0"><xsl:value-of select="$name"/></xsl:when>
             <xsl:otherwise>SeeAlso service</xsl:otherwise>
           </xsl:choose>
+        </xsl:variable>
+        <h1>
+          <xsl:choose>
+            <xsl:when test="$seealso-query-base">
+              <a href="{$seealso-query-base}"><xsl:value-of select="$title"/></a>
+            </xsl:when>
+            <xsl:otherwise><xsl:value-of select="$title"/></xsl:otherwise>
+          </xsl:choose>
         </h1>
+        <xsl:if test="$osd/osd:OpenSearchDescription/osd:Description">
+            <p><xsl:value-of select="$osd/osd:OpenSearchDescription/osd:Description"/></p>
+        </xsl:if>
         <xsl:choose>
           <xsl:when test="$fullservice">
-            <xsl:call-template name="about">
-              <xsl:with-param name="baseurl" select="$seealso-query-base"/>
+            <xsl:call-template name="demo">
               <xsl:with-param name="osd" select="$osd/osd:OpenSearchDescription"/>
             </xsl:call-template>
+            <h2>About this SeeAlso Webservice</h2>
             <xsl:call-template name="intro"/>
-            <xsl:call-template name="demo">
+            <xsl:call-template name="about">
               <xsl:with-param name="osd" select="$osd/osd:OpenSearchDescription"/>
             </xsl:call-template>
             <h2 id='osd' name='osd'>OpenSearch description document</h2>
@@ -254,13 +287,14 @@ table { margin-bottom: 0.5em; }
             </div>
           </xsl:when>
           <xsl:otherwise>
-            <xsl:call-template name="intro"/>
             <xsl:call-template name="demo"/>
+            <h2>About this SeeAlso Webservice</h2>
+            <xsl:call-template name="intro"/>
           </xsl:otherwise>
         </xsl:choose>
         <xsl:if test="name(/*[1]) = 'formats'">
-          <h2 id='formats' name='formats'>unAPI format list</h2>
-          <div class="code">
+          <h2 id='formats'>unAPI format list</h2>
+          <div class="code" id='formats'>
             <xsl:apply-templates select="/" mode="xmlverb" />
           </div>
         </xsl:if>
@@ -272,6 +306,7 @@ table { margin-bottom: 0.5em; }
       </body>
     </html>
   </xsl:template>
+
   <xsl:template match="osd:OpenSearchDescription" mode="name">
     <xsl:choose>
       <xsl:when test="osd:ShortName">
@@ -297,30 +332,32 @@ table { margin-bottom: 0.5em; }
     The service provides an <a href="http://unapi.info">unAPI</a> format list that
     includes the <em>seealso</em> response format
     (see <a href="http://www.gbv.de/wikis/cls/SeeAlso_Simple_Specification">SeeAlso Simple Specification</a>).
-    You can test the service by typing in an identifier in the query field below.
+    You can test the service by typing in an identifier in the query field above.
     In practise this web service should not be queried by hand but included in another web page or application.
+  </p>
+  <p>
+    If you query in <tt>seealso</tt> JSON format, you can add a <tt>callback</tt> parameter to the query URL.
+    The JSON response is then wrapped in in parentheses and a function name of your choice.
+    Callbacks are particularly useful for use with web service requests in client-side JavaScript, but they
+    also involve security risks.
   </p>
 </xsl:template>
 
 <!-- Show BaseURL, URL template and additional metadata in the OpenSearch description document -->
 <xsl:template name="about">
-  <xsl:param name="baseurl"/>
   <xsl:param name="osd"/>
   <table>
     <xsl:for-each select="$osd/*">
       <xsl:variable name="localname" select="local-name(.)"/>
       <xsl:variable name="fullname" select="name(.)"/>
       <xsl:variable name="namespace" select="namespace-uri(.)"/>
-      <xsl:if test="$localname != 'Query' and $localname!='Url' and $localname != 'ShortName'">
+      <xsl:if test="$localname != 'Query' and $localname!='Url' and $localname != 'ShortName' and $localname != 'Description'">
         <tr>
           <th><xsl:value-of select="$localname"/></th>
           <td><xsl:value-of select="normalize-space(.)"/></td>
         </tr>
       </xsl:if>
     </xsl:for-each>
-    <tr>
-      <th>BaseURL</th><td><a href="{$baseurl}"><xsl:value-of select="$baseurl"/></a></td>
-    </tr>
     <tr>
       <th>URL template</th>
       <td><xsl:value-of select="$osd/osd:Url[@type='text/javascript'][1]/@template"/></td>
@@ -342,81 +379,89 @@ table { margin-bottom: 0.5em; }
         </td>
       </tr>
     </xsl:if>
+    <xsl:if test="$beaconurl">
+      <tr>
+        <th>Download</th>
+        <td>You can also <a href="{$beaconurl}">download a full dump</a> in BEACON format.</td>
+      </tr>
+    </xsl:if>
     <!-- TODO: add information about additional fields (if any) -->
-  </table>  
+  </table>
 </xsl:template>
 
 <xsl:template name="demo">
   <xsl:param name="osd"/>
   <xsl:variable name="examples" select="$osd/osd:Query[@role='example'][@searchTerms]"/>
   <form>
-    <table id='demo'>
-      <tr>
-        <th>query</th>
-        <td>
-          <input type="text" id="identifier" onkeyup="lookup();" size="40" value="{/formats/@id}"/>
-          <xsl:if test="$osd and $examples">
-            <xsl:text> for instance </xsl:text>
-            <xsl:if test="count($examples) &gt;= 3">
-              <select name="examples" onchange="changeExample(this);">
-                <option value="" />
-                <xsl:for-each select="$examples">
-                  <option value="{@searchTerms}">
-                    <xsl:value-of select="@searchTerms"/>
-                  </option>
-                </xsl:for-each>
-              </select>
-            </xsl:if>
-            <xsl:if test="count($examples) &lt; 3">
-              <xsl:for-each select="$examples">
-                <xsl:if test="position() &gt; 1 and position() &lt; 4">, </xsl:if>
-                <xsl:if test="position() &lt; 4">
-                  <tt style="text-decoration:underline" onclick='document.getElementById("identifier").value="{@searchTerms}";lookup();'>
-                     <xsl:value-of select="@searchTerms"/>
-                  </tt>
-                </xsl:if>
-              </xsl:for-each>
-            </xsl:if>
-          </xsl:if>
-        </td>
-      </tr>
-      <xsl:if test="$moreformats">
-        <tr>
-          <th>format</th>
-          <td>
-            <xsl:for-each select="$formats">
-              <xsl:if test="position() &gt; 1"> | </xsl:if>
-              <span id="format-{@name}" onclick="selectFormat('{@name}');">
-                <xsl:value-of select="@name"/>
-              </span>
+    <p>
+      <input type="text" id="identifier" onkeyup="lookup();" size="50" value="{/formats/@id}"/>
+      <xsl:if test="$osd and $examples">
+      <xsl:text> try for instance </xsl:text>
+      <xsl:if test="count($examples) &gt;= 3">
+            <select name="examples" onchange="changeExample(this);">
+            <option value="" />
+            <xsl:for-each select="$examples">
+                <option value="{@searchTerms}">
+                <xsl:value-of select="@searchTerms"/>
+                </option>
             </xsl:for-each>
-          </td>
-        </tr>
+            </select>
       </xsl:if>
-      <tr>
-        <th>query URL<sup><a href='#qurlnote'>*</a></sup></th>
-        <td><a id='query-url' href=''></a></td>
-      </tr>
-      <tr>
-        <th>
-            response
-        </th>
-        <td> 
+      <xsl:if test="count($examples) &lt; 3">
+            <xsl:for-each select="$examples">
+            <xsl:if test="position() &gt; 1 and position() &lt; 4">, </xsl:if>
+            <xsl:if test="position() &lt; 4">
+                <tt style="text-decoration:underline" onclick='document.getElementById("identifier").value="{@searchTerms}";lookup();'>
+                    <xsl:value-of select="@searchTerms"/>
+                </tt>
+            </xsl:if>
+            </xsl:for-each>
+          </xsl:if>
+      </xsl:if>
+    </p>
+    <p><a id='query-url' href=''></a></p>
+      <xsl:if test="$moreformats">
+        <p>
+          format = 
+          <xsl:for-each select="$formats">
+            <xsl:if test="position() &gt; 1"> | </xsl:if>
+            <span id="format-{@name}" onclick="selectFormat('{@name}');" title="{@type}">
+              <xsl:value-of select="@name"/>
+            </span>
+          </xsl:for-each>
+        </p>
+      </xsl:if>
+    <h2>Response</h2>
+      <p>
           <span id="seealso-response">
             <small style="float:right;">[<span onclick="toggleFullResponse(this);">+</span>]</small>
             <pre id='response'></pre>
-            <iframe id="response-debug-iframe" width="90%" name="response-debug-iframe" src="" scrolling="auto" style="display:none;" class="code" />
+            <!-- IE does not like empty tag iframe! -->
+            <iframe id="response-debug-iframe" width="90%" name="response-debug-iframe" src="" scrolling="auto" style="display:none;" class="code"></iframe>
           </span>
           <span id="other-response" style="display:none">
-            <iframe id="response-other-iframe" width="90%" name="response-other-iframe" src="" scrolling="auto" class="code" />
+            <iframe id="response-other-iframe" width="90%" name="response-other-iframe" src="" scrolling="auto" class="code"></iframe>
+          </span>
+      </p>
+    <table id='demo'>
+      <!--tr>
+        <td colspan="2">
+          <span id="seealso-response">
+            <small style="float:right;">[<span onclick="toggleFullResponse(this);">+</span>]</small>
+            <pre id='response'></pre>
+            <iframe id="response-debug-iframe" width="90%" name="response-debug-iframe" src="" scrolling="auto" style="display:none;" class="code" ></iframe>
+          </span>
+          <span id="other-response" style="display:none">
+            <iframe id="response-other-iframe" width="90%" name="response-other-iframe" src="" scrolling="auto" class="code"></iframe>
           </span>
         </td>
-      </tr>
+      </tr-->
       <tr id="displayrow">
         <th>
-          display
-          <select id='display-styles' style="display:none;" onchange="changeView(this);">
-          </select>
+          <div style="display:none;">display as
+            <select id='display-styles' onchange="changeView(this);">
+            </select>
+          </div>
         </th>
         <td>
           <div id='display'></div>
@@ -424,12 +469,6 @@ table { margin-bottom: 0.5em; }
       </tr>
     </table>
   </form>
-  <p>
-    <a name='qurlnote' id='qurlnote'/><sup>*</sup>In addition you can add a <tt>callback</tt> parameter 
-    to the query URL. The JSON response is then wrapped in in parentheses and a function name of your choice.
-    Callbacks are particularly useful for use with web service requests in client-side JavaScript, but they
-    also involve security risks.
-  </p>
 </xsl:template>
 
 <!-- reusable replace-string function -->

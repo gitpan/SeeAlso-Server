@@ -6,7 +6,7 @@ use Test::More qw(no_plan);
 use Test::Exception;
 
 require_ok('SeeAlso::Identifier::Factory');
-
+require_ok('SeeAlso::Server');
 
 #### fixed type (implies including the class)
 
@@ -52,7 +52,6 @@ is( $id, 'hello', 'multiple types (2b)' );
 $id = $factory->create();
 isa_ok( $id, 'SeeAlso::Identifier::ISBN', 'multiple types (3)' );
 
-
 #### refuse unknown types
 dies_ok { $factory = new SeeAlso::Identifier::Factory
     type => [qw(Foo Bar Doz)]
@@ -84,8 +83,13 @@ is( $id, 'abc', 'dynamically created identifier type: canonical' );
 is( $id->hash, 'AB', 'dynamically created identifier type: hash' );
 
 
-
-# ...
+$id = SeeAlso::Identifier::Factory->new(
+    type => 'GVKPPN', 
+    parse => sub { lc($_[0]) if $_[0] =~ /^(gvk:ppn:)?([0-9]*[0-9x])$/i },
+    canonical => sub { 'gvk:ppn:'.$_[0] if $_[0] },
+    hash => sub { substr($_[0],0,length($_[0])-1) if $_[0] } 
+)->create('123');
+isa_ok( $id, 'GVKPPN' );
 
 __END__
 

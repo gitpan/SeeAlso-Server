@@ -1,19 +1,96 @@
-package SeeAlso::Identifier::ISBN;
-
 use strict;
 use warnings;
-
-=head1 NAME
-
-SeeAlso::Identifier::ISBN - International Standard Book Number Identifier
-
-=cut
+package SeeAlso::Identifier::ISBN;
+{
+  $SeeAlso::Identifier::ISBN::VERSION = '0.71';
+}
+#ABSTRACT: International Standard Book Number as Identifier
 
 use Business::ISBN;
 use Carp;
 
 use base qw( SeeAlso::Identifier );
-our $VERSION = "0.62";
+
+
+sub parse {
+    my $value = shift;
+    $value = shift if ref($value) and scalar @_;
+
+    if (defined $value and not UNIVERSAL::isa( $value, 'Business::ISBN' ) ) {
+        $value =~ s/^urn:isbn://i;
+        $value = Business::ISBN->new( $value );
+    }
+
+    return '' unless defined $value;
+
+    my $status = $value->error;
+    if ( $status != Business::ISBN::GOOD_ISBN && 
+         $status != Business::ISBN::INVALID_GROUP_CODE &&
+         $status != Business::ISBN::INVALID_PUBLISHER_CODE ) {
+         return '';
+    }
+
+    $value = $value->as_isbn13 unless ref($value) eq 'Business::ISBN13';
+
+    return $value->as_string([]);
+}
+
+
+sub canonical {
+    return ${$_[0]} eq '' ? '' : 'urn:isbn:' . ${$_[0]};
+}
+
+
+sub hash {
+    my $self = shift;
+
+    # TODO: support use as constructor and as function
+
+    if ( scalar @_ ) {
+        my $value = shift;
+        $value = defined $value ? "$value" : "";
+        $value = '' if not $value =~ /^[0-9]+$/ or $value >= 2000000000;
+        if ( $value eq "" ) {
+            $$self = '';
+            return '';
+        }
+        my $isbn = Business::ISBN13->new( ($value+978000000000) . "X" );
+        $isbn->fix_checksum;
+        $self->value( $isbn );
+        return $value;
+    } else {
+        return $$self eq '' ? '' : substr($$self, 2, 10 ) - 8000000000;
+    }
+}
+
+
+sub isbn13 {
+    my $self = shift;
+    return $$self;
+}
+
+
+sub isbn10 {
+    my $self = shift;
+    return '' if $$self eq '' or not $$self =~ /^978/;
+    my $value = Business::ISBN->new( substr($$self,3) );
+    $value->fix_checksum;
+    return $value->as_string([]);
+}
+
+1;
+
+
+__END__
+=pod
+
+=head1 NAME
+
+SeeAlso::Identifier::ISBN - International Standard Book Number as Identifier
+
+=head1 VERSION
+
+version 0.71
 
 =head1 SYNOPSIS
 
@@ -39,10 +116,6 @@ L<SeeAlso::Identifier>. As canonical form the URN representation of
 ISBN-13 without hyphens is used - that means all ISBN-10 are converted
 to ISBN-13. As hashed form of an ISBN, a 32 Bit integer can be calculated.
 
-Please note that '0' is a valid value representing ISBN-10 0-00-000000-0
-and ISBN-13 978-0-00-000000-2 although it is mostly used errorously in
-practise.
-
 =head1 METHODS
 
 =head2 parse ( $value )
@@ -50,31 +123,6 @@ practise.
 Get and/or set the value of the ISBN. Returns an empty string or the valid
 ISBN-13 without hyphens as determinded by L<Business::ISBN>. You can also 
 use this method as function.
-
-=cut
-
-sub parse {
-    my $value = shift;
-    $value = shift if ref($value) and scalar @_;
-
-    if (defined $value and not UNIVERSAL::isa( $value, 'Business::ISBN' ) ) {
-        $value =~ s/^urn:isbn://i;
-        $value = Business::ISBN->new( $value );
-    }
-
-    return '' unless defined $value;
-
-    my $status = $value->error;
-    if ( $status != Business::ISBN::GOOD_ISBN && 
-         $status != Business::ISBN::INVALID_GROUP_CODE &&
-         $status != Business::ISBN::INVALID_PUBLISHER_CODE ) {
-         return '';
-    }
-
-    $value = $value->as_isbn13 unless ref($value) eq 'Business::ISBN13';
-
-    return $value->as_string([]);
-}
 
 =head2 canonical
 
@@ -86,14 +134,6 @@ only valid ISBN (with valid checkdigit) are allowed, second all ISBN are
 converted to ISBN-13 notation without hyphens (URIs without defined 
 normalization and valitidy check are pointless).
 
-Instead of RFC 3187 you could also use "http://purl.org/isbn/".
-
-=cut
-
-sub canonical {
-    return ${$_[0]} eq '' ? '' : 'urn:isbn:' . ${$_[0]};
-}
-
 =head2 hash ( [ $value ] )
 
 Returns or sets a space-efficient representation of the ISBN as long integer.
@@ -102,40 +142,31 @@ This makes 2,000,000,000 possible ISBN which fits in a 32 bit (signed or
 unsigned) integer value. The integer value is calculated from the ISBN-13 by
 removing the check digit and subtracting 978,000,000,000.
 
-=cut
+=head2 isbn13
 
-sub hash {
-    my $self = shift;
+Return the ISBN in ISBN 13 form (or an empty string)
 
-    # TODO: support use as constructor and as function
+=head2 isbn10
 
-    if ( scalar @_ ) {
-        my $value = shift;
-        $value = defined $value ? "$value" : "";
-        $value = '' if not $value =~ /^[0-9]+$/ or $value >= 2000000000;
-        if ( $value eq "" ) {
-            $$self = '';
-            return '';
-        }
-        my $isbn = Business::ISBN13->new( ($value+978000000000) . "X" );
-        $isbn->fix_checksum;
-        $self->value( $isbn );
-        return $value;
-    } else {
-        return $$self eq '' ? '' : substr($$self, 2, 10 ) - 8000000000;
-    }
-}
+Return the ISBN in ISBN 10 form if possible (or an empty string)
 
-1;
+=head1 NOTES
+
+In theory zero ('0') is a valid ISBN value representing ISBN-10 0-00-000000-0
+= ISBN-13 978-0-00-000000-2. In practise this value is mostly used errorously.
+
+For canonical form instead of RFC 3187 you could also use "http://purl.org/isbn/".
 
 =head1 AUTHOR
 
-Jakob Voss C<< <jakob.voss@gbv.de> >>
+Jakob Voss
 
-=head1 LICENSE
+=head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2007-2009 by Verbundzentrale Goettingen (VZG) and Jakob Voss
+This software is copyright (c) 2013 by Jakob Voss.
 
-This library is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself, either Perl version 5.8.8 or, at
-your option, any later version of Perl 5 you may have available.
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+=cut
+

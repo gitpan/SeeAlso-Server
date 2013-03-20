@@ -1,25 +1,45 @@
---- #YAML:1.0
-name:                SeeAlso-Server
-version:             0.57
-abstract:            SeeAlso Linkserver Protocol Server
-license:             ~
-author:              
-    - Jakob Voss <jakob.voss@gbv.de>
-generated_by:        ExtUtils::MakeMaker version 6.42
-distribution_type:   module
-requires:     
-    Business::ISBN:                2.02
-    Carp:                          1.01
-    CGI:                           3.0
-    Data::Validate::URI:           0.05
-    Date::Parse:                   2.27
-    DBI:                           1.54
-    Getopt::Long:                  0
-    JSON::XS:                      2.0
-    Pod::Usage:                    0
-    Test::Exception:               0.27
-    Text::CSV:                     0
-    URI:                           1.35
+---
+abstract: 'SeeAlso Linkserver Protocol Server'
+author:
+  - 'Jakob Voss'
+build_requires:
+  CHI: 0
+  Cache::Memory: 0
+  Data::Dumper: 0
+  File::Temp: 0
+  Test::Exception: 0
+  Test::More: 0
+configure_requires:
+  ExtUtils::MakeMaker: 6.30
+dynamic_config: 0
+generated_by: 'Dist::Zilla version 4.300031, CPAN::Meta::Converter version 2.120921'
+license: perl
 meta-spec:
-    url:     http://module-build.sourceforge.net/META-spec-v1.3.html
-    version: 1.3
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: SeeAlso-Server
+requires:
+  Business::ISBN: 0
+  CGI: 0
+  Carp: 0
+  Config::IniFiles: 0
+  DBI: 0
+  DBI::Const::GetInfoType: 0
+  Data::Validate::URI: 0
+  Date::Parse: 0
+  Exporter: 0
+  JSON::XS: 0
+  LWP::Simple: 0
+  POSIX: 0
+  Text::CSV: 0
+  URI: 0
+  YAML::Any: 0
+  base: 0
+  overload: 0
+  strict: 0
+  utf8: 0
+  warnings: 0
+resources:
+  bugtracker: https://github.com/gbv/SeeAlso
+  repository: https://github.com/gbv/
+version: 0.71

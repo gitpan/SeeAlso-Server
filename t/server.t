@@ -6,6 +6,7 @@ use Test::More qw(no_plan);
 
 use SeeAlso::Server;
 use SeeAlso::Response;
+use Data::Dumper;
 use CGI;
 
 sub UCnormalizedID { my $id = shift; return SeeAlso::Response->new( uc($id->normalized()) ); }
@@ -33,14 +34,12 @@ my $xml300 = join('', <XML>);
 ok( $s->listFormats($r) eq $xml300, 'listFormats => 300');
 close XML;
 
-$s = SeeAlso::Server->new( description=>"" );
+$s = SeeAlso::Server->new( formats => { opensearchdescription => 0 } );
 $r = SeeAlso::Response->new();
-
 open XML, "t/listFormats200noosd.xml";
 my $xml200noosd = join('', <XML>);
 ok( $s->listFormats($r) eq $xml200noosd, 'listFormats => 200 without OpenSearch Description');
 close XML;
-
 
 use SeeAlso::Source;
 $s = SeeAlso::Server->new( cgi => CGI->new() );
@@ -72,14 +71,16 @@ sub query_method {
 $source = SeeAlso::Source->new( \&query_method );
 
 $http = $s->query($source, $identifier, 'seealso');
-ok ( not $s->errors() and $http =~ /^Status: 200[^\[]+\["xyz",\["test"\],\[""\],\[""\]\]$/m, 'JSON Results' );
+ok( ! $s->errors, 'JSON Results (1)' );
+like( $http, qr/^Status: 200[^\[]+\["xyz",\["test"\],\[""\],\[""\]\]$/m, 'JSON Results (2)' );
 
 $http = $s->query($source, $identifier, 'foo');
 is ( $http, $xml300, 'Result but not right format');
 
 $http = $s->query($source, $identifier, 'seealso', 'a[1].b');
 my $res = '^Status: 200[^\[]+a\[1\]\.b\(\["xyz",\["test"\],\[""\],\[""\]\]\);$';
-ok ( not $s->errors() and $http =~ /$res/m, 'JSON Result with callback' );
+ok( ! $s->errors, 'JSON Result with callback' );
+like( $http, qr/$res/m, 'JSON Result with callback' );
 
 $cgi = CGI->new;
 $cgi->param('format'=>'seealso');
@@ -127,18 +128,21 @@ $source = SeeAlso::Source->new( sub { 1 / int(shift->value); } );
 $s->query($source, "a", "seealso");
 # Argument "a" isn\'t numeric 
 # Illegal division by zero
-is ( scalar @{ $s->errors() }, 2, "error handler");
+my @errors = $s->errors;
+is( scalar @errors, 2, "error handler (0)" );
+like( $errors[0], qr/Argument "a" isn't numeric/, "error handler (1)" );
+like( $errors[1], qr/Illegal division by zero/, "error handler (2)" );
 
 $s->query($source, "0", "seealso");
-# Illegal division by zero
-is ( scalar @{ $s->errors() }, 1, "error handler");
-
-$s->query($source, "1", "seealso");
-# Query method did not return SeeAlso::Response!
-is ( scalar @{ $s->errors() }, 1, "error handler");
-
+@errors = $s->errors;
+like( $errors[0], qr/^Illegal division by zero/, "error handler");
 
 # return empty result with uppercase identifier
 $s = SeeAlso::Server->new();
 $http = $s->query( \&UCnormalizedID, "abc", "seealso" );
-ok ( $http =~ /\["ABC",\[\],\[\],\[\]\]/, "code as source" );
+like( $http, qr/\["ABC",\[\],\[\],\[\]\]/, "code as source" );
+
+# use another identifier type
+$s = SeeAlso::Server->new( idtype => 'SeeAlso::Identifier::ISBN' );
+$r = $s->query( sub { return SeeAlso::Response->new( $_[0] ); }, '978-0-596-52724-2', 'seealso' );
+like( $r, qr/urn:isbn:9780596527242/, "idtype" );

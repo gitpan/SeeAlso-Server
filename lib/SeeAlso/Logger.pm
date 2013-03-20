@@ -1,18 +1,128 @@
-package SeeAlso::Logger;
-
 use strict;
 use warnings;
+package SeeAlso::Logger;
+{
+  $SeeAlso::Logger::VERSION = '0.71';
+}
+#ABSTRACT: log requests to a SeeAlso Simple service
+
+use Carp qw(croak);
+use POSIX qw(strftime);
+use CGI;
+
+
+sub new {
+    my $class = shift;
+    $class = ref $class || $class;
+    my ($file, %param);
+
+    if (@_ % 2) {
+        ($file, %param) = @_;
+    } else {
+        %param = @_;
+    }
+    $file = $param{file} unless defined $file;
+
+    my $self = bless {
+        counter => 0,
+        filename => "",
+        handle => undef,
+        privacy => $param{privacy} || 0,
+        filter => $param{filter} || undef,
+    }, $class;
+
+    croak("Filter parameter must be a code reference")
+        if ($param{filter} and ref($param{filter}) ne 'CODE');
+
+    $self->set_file($file) if defined $file;
+
+    return $self;
+}
+
+
+
+sub set_file {
+    my $self = shift;
+    my $file = shift;
+
+    if (ref($file) eq "GLOB" or eval { $file->isa("IO::Handle") }) {
+        $self->{filename} = "";
+        $self->{handle} = $file;
+    } else {
+        $self->{filename} = $file;
+        $self->{handle} = eval {
+            my $fh; open( $fh, ">>", $file ) or die; binmode $fh, ":encoding(UTF-8)"; $fh;
+        };
+        undef $self->{handle} if ( $@ ); # failed to open file
+    }
+    return $self->{handle};
+}
+
+
+
+sub log {
+    my ( $self, $cgi, $response, $service ) = @_;
+    $self->{counter}++; # count every call (no matter if printed or not)
+
+    return unless defined $self->{handle} || defined $self->{filter};
+
+    my $datetime = strftime("%Y-%m-%dT%H:%M:%S", localtime);
+    my $host = $cgi->remote_host() || "";
+    my $referer = $cgi->referer() || "";
+    # my $ident = $cgi->remote_ident() || "-";
+    # my $user =  $cgi->remote_user() || "-";
+    # my $user_agent = $cgi->user_agent();
+    $service ||= "";
+
+    my $id = (defined $cgi ? $cgi->param('id') : CGI::param('id')) || '';
+
+    my $valid = $response->query() eq "" ? '0' : '1';
+    my $size = $response->size();
+
+    my @values = (
+        $datetime,
+        $host,
+        $referer,
+        $service,
+        $id,
+        $valid,
+        $size
+    );
+
+    if ( defined $self->{filter} ) {
+        @values = $self->{filter}(@values);
+    }
+    if ( @values and defined $self->{handle} ) {
+        print { $self->{handle} } join("\t", @values) . "\n";
+    }
+
+    return 1;
+}
+
+
+use Date::Parse;
+
+sub parse {
+    chomp;
+    my @values = split /\t/;
+    return unless $#values == 6;
+    eval { $values[0] = str2time($values[0]); };
+    return if $@;
+    return @values;
+}
+
+1;
+
+__END__
+=pod
 
 =head1 NAME
 
 SeeAlso::Logger - log requests to a SeeAlso Simple service
 
-=cut
+=head1 VERSION
 
-use Carp qw(croak);
-use POSIX qw(strftime);
-
-our $VERSION = "0.45";
+version 0.71
 
 =head1 DESCRIPTION
 
@@ -88,65 +198,13 @@ part of each referer:
 Do not log remote host (remote host is always '-').
 To also hide the referer, use a filter method.
 
-
 =back
-
-=cut
-
-sub new {
-    my $class = shift;
-    $class = ref $class || $class;
-    my ($file, %param);
-
-    if (@_ % 2) {
-        ($file, %param) = @_;
-    } else {
-        %param = @_;
-    }
-    $file = $param{file} unless defined $file;
-
-    my $self = bless {
-        counter => 0,
-        filename => "",
-        handle => undef,
-        privacy => $param{privacy} || 0,
-        filter => $param{filter} || undef,
-    }, $class;
-
-    croak("Filter parameter must be a code reference")
-        if ($param{filter} and ref($param{filter}) ne 'CODE');
-
-    $self->set_file($file) if defined $file;
-
-    return $self;
-}
-
 
 =head2 set_file ( $file-or-handle )
 
 Set the file handler or file name or function to log to.
 If you specify a filename, the filename property of this
 object is set. Returns the file handle on success.
-
-=cut
-
-sub set_file {
-    my $self = shift;
-    my $file = shift;
-
-    if (ref($file) eq "GLOB" or eval { $file->isa("IO::Handle") }) {
-        $self->{filename} = "";
-        $self->{handle} = $file;
-    } else {
-        $self->{filename} = $file;
-        $self->{handle} = eval {
-            my $fh; open( $fh, ">>", $file ) or die; binmode $fh, ":utf8"; $fh;
-        };
-        undef $self->{handle} if ( $@ ); # failed to open file
-    }
-    return $self->{handle};
-}
-
 
 =head2 log ( $cgi, $response, $service )
 
@@ -188,47 +246,6 @@ Number of entries in the response content
 
 =back
 
-=cut
-
-sub log {
-    my ( $self, $cgi, $response, $service ) = @_;
-    $self->{counter}++; # count every call (no matter if printed or not)
-
-    return unless defined $self->{handle} || defined $self->{filter};
-
-    my $datetime = strftime("%Y-%m-%dT%H:%M:%S", localtime);
-    my $host = $cgi->remote_host() || "";
-    my $referer = $cgi->referer() || "";
-    # my $ident = $cgi->remote_ident() || "-";
-    # my $user =  $cgi->remote_user() || "-";
-    # my $user_agent = $cgi->user_agent();
-    $service ||= "";
-
-    my $id = $cgi->param('id') || '';
-
-    my $valid = $response->query() eq "" ? '0' : '1';
-    my $size = $response->size();
-
-    my @values = (
-        $datetime,
-        $host,
-        $referer,
-        $service,
-        $id,
-        $valid,
-        $size
-    );
-
-    if ( defined $self->{filter} ) {
-        @values = $self->{filter}(@values);
-    }
-    if ( @values and defined $self->{handle} ) {
-        print { $self->{handle} } join("\t", @values) . "\n";
-    }
-
-    return 1;
-}
-
 =head1 ADDITIONAL FUNCTIONS
 
 =head2 parse ( $line )
@@ -237,29 +254,16 @@ Parses a line of of seven tabulator seperated values. The first value must be a
 ISO 8601 timestamp.
 as
 
-=cut
-
-use Date::Parse;
-
-sub parse {
-    chomp;
-    my @values = split /\t/;
-    return unless $#values == 6;
-    eval { $values[0] = str2time($values[0]); };
-    return if $@;
-    return @values;
-}
-
-1;
-
 =head1 AUTHOR
 
-Jakob Voss C<< <jakob.voss@gbv.de> >>
+Jakob Voss
 
-=head1 LICENSE
+=head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2007-2009 by Verbundzentrale Goettingen (VZG) and Jakob Voss
+This software is copyright (c) 2013 by Jakob Voss.
 
-This library is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself, either Perl version 5.8.8 or, at
-your option, any later version of Perl 5 you may have available.
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+=cut
+

@@ -1,40 +1,14 @@
-package SeeAlso::Identifier::Factory;
-
 use strict;
 use warnings;
-
-=head1 NAME
-
-SeeAlso::Identifier::Factory - Identify and create identifiers
-
-=cut
+package SeeAlso::Identifier::Factory;
+{
+  $SeeAlso::Identifier::Factory::VERSION = '0.71';
+}
+#ABSTRACT: Identify and create identifiers
 
 use SeeAlso::Identifier;
 use Carp;
-our $VERSION = '0.11';
 
-=head1 SYNOPSIS
-
-  $factory->create("...");
-
-=head1 METHODS
-
-=head2 new ( %params )
-
-Create a new Identifier Factory.
-
-  $factory = new SeeAlso::Identifier::Factory
-      type => [qw( class1 class2 ... )]
-
-or
-
-  $factory = new SeeAlso::Identifier::Factory
-      parse => sub { ... },
-      canonical => sub { lc($_[0]) },
-      hash => sub { md5_hex($_[0]) },
-      type => '...';
-
-=cut
 
 sub new {
     my ($class, %params) = @_;
@@ -61,6 +35,7 @@ sub new {
         # TODO: also support hash reference
     }
 
+    ## no critic
     foreach my $type (@{$self->{type}}) {
         if ( not eval 'require ' . $type ) {
             if ( @{$self->{type}} == 1 ) {
@@ -71,15 +46,11 @@ sub new {
         UNIVERSAL::isa( $type, 'SeeAlso::Identifier' )
             or croak("$type must be a (subclass of) SeeAlso::Identifier");
     }
+    ## use critic
 
     return $self;
 }
 
-=head2 create ( $value )
-
-Create a new L<SeeAlso::Identifier> object.
-
-=cut
 
 sub create {
     my ($self, $value) = @_;
@@ -97,10 +68,6 @@ sub create {
     return $self->{type}->[0]->new( $value );
 }
 
-=head1 FUNCTION
-
-=head2 makeclass
-=cut
 
 sub makeclass {
     my (%params) = @_;
@@ -116,8 +83,7 @@ sub makeclass {
     push @out, '  our @ISA = qw(SeeAlso::Identifier);';
     if ($parse) {
         push @out, '  sub parse {';
-        push @out, '    my ($self, $value) = @_;';
-        push @out, '    $value = $parse->( $value );';
+        push @out, '    my $value = $parse->( shift );';
         push @out, '    return defined $value ? "$value" : "";';
         push @out, '  }';
     }
@@ -133,24 +99,81 @@ sub makeclass {
     push @out, '1; };';
     my $out = join("\n",@out);
 
+    ## no critic
     # print $out;# if $print;
     { no warnings; eval $out; }
     carp $@ if $@;
+    ## use critic
 
     return $type;
 }
 
 1;
 
+__END__
+=pod
+
+=head1 NAME
+
+SeeAlso::Identifier::Factory - Identify and create identifiers
+
+=head1 VERSION
+
+version 0.71
+
+=head1 SYNOPSIS
+
+  $identifier = $factory->create( $could_be_an_identifier_string );
+
+=head1 DESCRIPTION
+
+A SeeAlso::Identifier::Factory object is given a string (via its method
+C<create>) and returns a well-defined L<SeeAlso::Identifier> object. A
+factory is useful to parse a string that may be an identifier of several
+identifier kinds. 
+
+The factory knows a list of identifier types (subclasses of 
+SeeAlso::Identifier); the first type that successfully parses the provided
+string value is used to create the identifier object. If no type works,
+an empty identifier of the first type is returned.
+
+=head1 METHODS
+
+=head2 new ( %params )
+
+Create a new Identifier Factory. You can either pass an array reference with
+identifier class name or a hash of methods that will be used to create a new
+identifier class:
+
+  $factory = new SeeAlso::Identifier::Factory
+      type => [qw( class1 class2 ... )]
+
+  $factory = new SeeAlso::Identifier::Factory
+      parse => sub { ... },
+      canonical => sub { lc($_[0]) },
+      hash => sub { md5_hex($_[0]) },
+      type => '...';
+
+=head2 create ( $value )
+
+Create a new L<SeeAlso::Identifier> object as described above.
+
+=head1 FUNCTIONS
+
+=head2 makeclass
+
+Dynamically creates a subclass of SeeAlso::Identifier with given name and methods.
+
 =head1 AUTHOR
 
-Jakob Voss C<< <jakob.voss@gbv.de> >>
+Jakob Voss
 
-=head1 LICENSE
+=head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2009 by Verbundzentrale Goettingen (VZG) and Jakob Voss
+This software is copyright (c) 2013 by Jakob Voss.
 
-This library is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself, either Perl version 5.8.8 or, at
-your option, any later version of Perl 5 you may have available.
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+=cut
 

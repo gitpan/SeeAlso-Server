@@ -2,32 +2,51 @@
 
 use strict;
 
-use Test::More tests => 36;
+use Test::More qw(no_plan);
 
 use SeeAlso::Response;
 
-my $r = SeeAlso::Response->new();
-is( $r->toJSON(), '["",[],[],[]]', 'empty response');
-is( $r->size(), 0, 'test empty' );
-is( $r->toJSON('callme'), 'callme(["",[],[],[]]);', 'callback');
-is( $r->query(), "", 'empty query' );
+my $r = SeeAlso::Response->new;
+use Data::Dumper;
+is( $r->size, 0, 'test empty' );
+is( $r->toJSON, '["",[],[],[]]', 'empty response' );
+ok( ! $r, 'empty response is false' );
+is( $r->toJSON('callme'), 'callme(["",[],[],[]]);', 'callback' );
+is( $r->query, "", 'empty query' );
 
 $r = SeeAlso::Response->new("123");
-is( $r->toJSON(), '["123",[],[],[]]', 'empty response with query');
-is( $r->query(), "123", 'query' );
+is( $r->toJSON, '["123",[],[],[]]', 'empty response with query' );
+is( $r->query, "123", 'query' );
+ok( $r, 'empty response with query is true' );
 
 $r->add("foo","urn:baz","uri:bar");
 my $json = '["123",["foo"],["urn:baz"],["uri:bar"]]';
 my $csv = '"foo","urn:baz","uri:bar"';
-is( $r->toJSON(), $json, 'simple response (JSON)');
-is( $r->toCSV(), $csv, 'simple response (CSV)');
+is( $r->toJSON, $json, 'simple response (JSON)');
+is( $r->toCSV, $csv, 'simple response (CSV)');
+is( $r->as_string, $json, 'simple response (as_string)');
+is( "$r", $json, 'simple response ("")');
 
 my $list = [ $r->get(0) ];
 is_deeply( $list, ["foo","urn:baz","uri:bar"], 'get method' );
 
+my @labels = $r->labels;
+is_deeply( \@labels, ["foo"], 'labels' );
+my @descriptions = $r->descriptions;
+is_deeply( \@descriptions, ["urn:baz"], 'descriptions' );
+my @uris = $r->uris;
+is_deeply( \@uris, ["uri:bar"], 'uris' );
+
 $r->add("faz");
 ok( $r->toJSON() eq '["123",["foo","faz"],["urn:baz",""],["uri:bar",""]]', 'simple response');
 is( $r->size, 2, 'test size' );
+
+@labels = $r->labels;
+is_deeply( \@labels, ["foo","faz"], 'labels' );
+@descriptions = $r->descriptions;
+is_deeply( \@descriptions, ["urn:baz",""], 'descriptions' );
+@uris = $r->uris;
+is_deeply( \@uris, ["uri:bar",""], 'uris' );
 
 $r->add("","","");
 is( $r->size, 2, 'empty triple ignored' );
